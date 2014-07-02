@@ -17,7 +17,8 @@ from django.core.management import CommandError
 from synnefo.db.models import (Backend, VirtualMachine, Network,
                                Flavor, IPAddress, Subnet,
                                BridgePoolTable, MacPrefixPoolTable,
-                               NetworkInterface, Volume, VolumeType)
+                               OvsVlanPoolTable, NetworkInterface,
+                               Volume, VolumeType)
 from functools import wraps
 
 from django.conf import settings
@@ -159,6 +160,8 @@ def pool_table_from_type(type_):
         return MacPrefixPoolTable
     elif type_ == "bridge":
         return BridgePoolTable
+    elif type_ == "ovs-vlan":
+        return OvsVlanPoolTable
     # elif type == "ip":
     #     return IPPoolTable
     else:

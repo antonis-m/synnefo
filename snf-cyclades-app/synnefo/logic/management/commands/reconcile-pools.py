@@ -30,6 +30,7 @@ that the reserved values are only the ones that are currently used.
 The pools for the following resources are checked:
     * Pool of bridges
     * Pool of MAC prefixes
+    * Pool of OVS Vlans
     * Pool of IPv4 addresses for each network"""
 
 

@@ -169,6 +169,9 @@ class Command(SynnefoCommand):
         if flavor == "IP_LESS_ROUTED" and not (subnet or subnet6):
             raise CommandError("Cannot create 'IP_LESS_ROUTED' network without"
                                " subnet")
+        if flavor == "OVS_VLAN" and not (mode == "openvswitch"):
+            raise CommandError("Cannot create 'OVS_VLAN' network without"
+                               " openvswitch mode")
 
         if not (userid or public):
             raise CommandError("'user' is required for private networks")

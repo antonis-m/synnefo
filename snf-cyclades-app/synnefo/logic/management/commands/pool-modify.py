@@ -19,7 +19,7 @@ from optparse import make_option
 from snf_django.management.commands import SynnefoCommand
 from synnefo.management.common import pool_table_from_type
 
-POOL_CHOICES = ['bridge', 'mac-prefix']
+POOL_CHOICES = ['bridge', 'mac-prefix', 'ovs-vlan']
 
 
 class Command(SynnefoCommand):

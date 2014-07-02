@@ -503,6 +503,7 @@ class Network(models.Model):
             'mode': 'bridged',
             'link': settings.DEFAULT_BRIDGE,
             'mac_prefix': settings.DEFAULT_MAC_PREFIX,
+            'ovs_vlan': None,
             'tags': None,
             'desc': "Basic flavor used for a bridged network",
         },
@@ -510,6 +511,7 @@ class Network(models.Model):
             'mode': 'routed',
             'link': None,
             'mac_prefix': settings.DEFAULT_MAC_PREFIX,
+            'ovs_vlan': None,
             'tags': 'ip-less-routed',
             'desc': "Flavor used for an IP-less routed network using"
                     " Proxy ARP",
@@ -518,15 +520,26 @@ class Network(models.Model):
             'mode': 'bridged',
             'link': settings.DEFAULT_MAC_FILTERED_BRIDGE,
             'mac_prefix': 'pool',
+            'ovs_vlan': None,
             'tags': 'private-filtered',
             'desc': "Flavor used for bridged networks that offer isolation"
                     " via filtering packets based on their src "
                     " MAC (ebtables)",
         },
+        'OVS_VLAN': {
+            'mode': 'openvswitch',
+            'link': settings.DEFAULT_OVS,
+            'mac_prefix': settings.DEFAULT_MAC_PREFIX,
+            'ovs_vlan': 'pool',
+            'tags': 'ovs-vlan',
+            'desc': "Flavor used for openvswitch networks that offer "
+                    "isolation via ovs vlans",
+        },
         'PHYSICAL_VLAN': {
             'mode': 'bridged',
             'link': 'pool',
             'mac_prefix': settings.DEFAULT_MAC_PREFIX,
+            'ovs_vlan': None,
             'tags': 'physical-vlan',
             'desc': "Flavor used for bridged network that offer isolation"
                     " via dedicated physical vlan",
@@ -543,6 +556,7 @@ class Network(models.Model):
     mode = models.CharField('Network Mode', max_length=16, null=True)
     link = models.CharField('Network Link', max_length=32, null=True)
     mac_prefix = models.CharField('MAC Prefix', max_length=32, null=False)
+    ovs_vlan = models.CharField('OVS Vlan', max_length=32, null=True)
     tags = models.CharField('Network Tags', max_length=128, null=True)
     public = models.BooleanField(default=False, db_index=True)
     created = models.DateTimeField(auto_now_add=True)
@@ -977,6 +991,16 @@ class MacPrefixPoolTable(PoolTable):
 
     def __unicode__(self):
         return u"<MACPrefixPool id:%s>" % self.id
+
+
+class OvsVlanPoolTable(PoolTable):
+    manager = pools.OvsVlanPool
+
+    def __str__(self):
+        return self.__unicode__()
+
+    def __unicode__(self):
+        return u"<OvsVlanPool id:%s>" % self.id
 
 
 class IPPoolTable(PoolTable):

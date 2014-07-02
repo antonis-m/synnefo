@@ -614,7 +614,7 @@ def update_network_state(network):
             log.error(msg % network)
             raise Exception(msg % network)
         log.info("Network %r deleted. Releasing link %r mac_prefix %r",
-                 network.id, network.mac_prefix, network.link)
+                 network.id, network.link, network.mac_prefix)
         network.deleted = True
         network.state = "DELETED"
         # Undrain the network, otherwise the network state will remain
@@ -627,7 +627,9 @@ def update_network_state(network):
         if network.link:
             if network.FLAVORS[network.flavor]["link"] == "pool":
                 release_resource(res_type="bridge", value=network.link)
-
+        if network.ovs_vlan:
+            if network.FLAVORS[network.flavor]["ovs_vlan"] == "pool":
+                release_resource(res_type="ovs_vlan", value=network.ovs_vlan)
         # Set all subnets as deleted
         network.subnets.update(deleted=True)
         # And delete the IP pools
@@ -1030,6 +1032,7 @@ def connect_network(network, backend, depends=[], group=None):
         for group in groups:
             job_id = client.ConnectNetwork(network.backend_id, group,
                                            network.mode, network.link,
+                                           network.ovs_vlan,
                                            conflicts_check=conflicts_check,
                                            depends=depends)
             job_ids.append(job_id)
@@ -1038,7 +1041,6 @@ def connect_network(network, backend, depends=[], group=None):
 
 def delete_network(network, backend, disconnect=True):
     log.debug("Deleting network %s from backend %s", network, backend)
-
     depends = []
     if disconnect:
         depends = disconnect_network(network, backend)

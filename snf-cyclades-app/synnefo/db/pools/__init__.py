@@ -261,6 +261,15 @@ class BridgePool(PoolManager):
         return int(value.replace(self.pool_table.base, "")) - 1
 
 
+class OvsVlanPool(PoolManager):
+    def index_to_value(self, index):
+        #VLAN indexes should start from 1
+        return str(index + 1)
+
+    def value_to_index(self, value):
+        return int(value) - 1
+
+
 class MacPrefixPool(PoolManager):
     def __init__(self, pool_table):
         do_init = False if pool_table.available_map else True

@@ -71,6 +71,9 @@ class Command(ListCommand):
     def get_subnets(network):
         return network.subnets.values_list('id', flat=True)
 
+    def get_vlan(network):
+        return network.ovs_vlan.values_list('ovs_vlan', flat=True)
+
     FIELDS = {
         "id": ("id", "The ID of the network"),
         "name": ("name", "The name of the network"),
@@ -89,6 +92,7 @@ class Command(ListCommand):
         "mode": ("mode", "The mode of the network"),
         "link": ("link", "The link of the network"),
         "mac_prefix": ("mac_prefix", "The network's MAC prefix"),
+        "ovs_vlan": ("ovs_vlan", "The networks vlan"),
         "drained": ("drained", "Whether network is drained or not"),
         "vms": (get_machines, "Number of connected servers"),
         "backends": (get_backends, "IDs of Ganeti backends that the network is"
@@ -98,7 +102,7 @@ class Command(ListCommand):
     }
 
     fields = ["id", "name", "user.uuid", "state", "public", "subnet.ipv4",
-              "gateway.ipv4", "link", "mac_prefix",  "drained",
+              "gateway.ipv4", "link", "mac_prefix", "ovs_vlan",  "drained",
               "floating_ip_pool"]
 
     def handle_args(self, *args, **options):

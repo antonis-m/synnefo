@@ -110,7 +110,7 @@ class VolumeFactory(factory.DjangoModelFactory):
     FACTORY_FOR = models.Volume
     userid = factory.Sequence(user_seq())
     size = factory.Sequence(lambda x: x, type=int)
-    name = factory.Sequence(lambda x: "volume-name-"+x, type=str)
+    name = factory.Sequence(lambda x: "volume-name-" + x, type=str)
     machine = factory.SubFactory(VirtualMachineFactory,
                                  userid=factory.SelfAttribute('..userid'))
     volume_type = factory.SubFactory(VolumeTypeFactory)
@@ -281,6 +281,12 @@ class MacPrefixPoolTableFactory(factory.DjangoModelFactory):
     FACTORY_FOR = models.MacPrefixPoolTable
     size = 500
     base = 'aa:00:0'
+
+
+class OvsVlanPoolTableFactory(factory.DjangoModelFactory):
+    FACTORY_FOR = models.OvsVlanPoolTable
+    size = 500
+    base = None
 
 
 class QuotaHolderSerialFactory(factory.DjangoModelFactory):

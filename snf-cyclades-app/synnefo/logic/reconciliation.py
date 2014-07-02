@@ -49,7 +49,7 @@ from django.db import transaction
 from synnefo.db.models import (Backend, VirtualMachine, Flavor,
                                pooled_rapi_client, Network,
                                BackendNetwork, BridgePoolTable,
-                               MacPrefixPoolTable)
+                               MacPrefixPoolTable, OvsVlanPoolTable)
 from synnefo.db import pools
 from synnefo.logic import utils, rapi, backend as backend_mod
 from synnefo.lib.utils import merge_time
@@ -715,6 +715,7 @@ class PoolReconciler(object):
     def reconcile(self):
         self.reconcile_bridges()
         self.reconcile_mac_prefixes()
+        self.reconcile_ovs_vlans()
 
         networks = Network.objects.prefetch_related("subnets")\
                                   .filter(deleted=False)
@@ -755,6 +756,23 @@ class PoolReconciler(object):
         used_mac_prefixes = set(networks.values_list('mac_prefix', flat=True))
         check_pool_consistent(pool=pool, pool_class=pools.MacPrefixPool,
                               used_values=used_mac_prefixes, fix=self.fix,
+                              logger=self.log)
+
+    @transaction.commit_on_success
+    def reconcile_ovs_vlans(self):
+        networks = Network.objects.filter(deleted=False, flavor="OVS_VLAN")
+        check_unique_values(objects=networks, field='ovs_vlan',
+                            logger=self.log)
+        try:
+            pool = OvsVlanPoolTable.get_pool()
+        except pools.EmptyPool:
+            self.log.info("There is no available pool for OVS vlans.")
+            return
+
+        # Since pool is locked, no new network may be created
+        used_ovs_vlans = set(networks.values_list('ovs_vlan', flat=True))
+        check_pool_consistent(pool=pool, pool_class=pools.OvsVlanPool,
+                              used_values=used_ovs_vlans, fix=self.fix,
                               logger=self.log)
 
     @transaction.commit_on_success

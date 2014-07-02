@@ -31,7 +31,8 @@ from django.db.models import Q
 from snf_django.lib.api import faults
 from synnefo.db.models import (Flavor, VirtualMachine, VirtualMachineMetadata,
                                Network, NetworkInterface, SecurityGroup,
-                               BridgePoolTable, MacPrefixPoolTable, IPAddress,
+                               BridgePoolTable, MacPrefixPoolTable,
+                               OvsVlanPoolTable, IPAddress,
                                IPPoolTable)
 from synnefo.plankton.backend import PlanktonBackend
 
@@ -377,9 +378,13 @@ def values_from_flavor(flavor):
     if mac_prefix == "pool":
         mac_prefix = allocate_resource("mac_prefix")
 
+    ovs_vlan = flavor.get("ovs_vlan")
+    if ovs_vlan == "pool":
+        ovs_vlan = allocate_resource("ovs_vlan")
+
     tags = flavor.get("tags")
 
-    return mode, link, mac_prefix, tags
+    return mode, link, mac_prefix, ovs_vlan, tags
 
 
 def allocate_resource(res_type):
@@ -402,6 +407,8 @@ def get_pool_table(res_type):
         return BridgePoolTable
     elif res_type == "mac_prefix":
         return MacPrefixPoolTable
+    elif res_type == "ovs_vlan":
+        return OvsVlanPoolTable
     else:
         raise Exception("Unknown resource type")
 

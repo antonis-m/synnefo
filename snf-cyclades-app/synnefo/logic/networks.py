@@ -47,9 +47,9 @@ def network_command(action):
 
 
 @transaction.commit_on_success
-def create(userid, name, flavor, link=None, mac_prefix=None, mode=None,
-           floating_ip_pool=False, tags=None, public=False, drained=False,
-           project=None):
+def create(userid, name, flavor, link=None, ovs_vlan=None, mac_prefix=None,
+           mode=None, floating_ip_pool=False, tags=None, public=False,
+           drained=False, project=None):
     if flavor is None:
         raise faults.BadRequest("Missing request parameter 'type'")
     elif flavor not in Network.FLAVORS.keys():
@@ -59,12 +59,15 @@ def create(userid, name, flavor, link=None, mac_prefix=None, mode=None,
         raise faults.BadRequest("Cannot override MAC_FILTERED mac-prefix")
     if link is not None and flavor == "PHYSICAL_VLAN":
         raise faults.BadRequest("Cannot override PHYSICAL_VLAN link")
+    if ovs_vlan is not None and flavor == "OVS_VLAN":
+        raise faults.BadRequest("Cannot override OVS_VLAN ovs-vlan")
 
     utils.check_name_length(name, Network.NETWORK_NAME_LENGTH, "Network name "
                             "is too long")
 
     try:
-        fmode, flink, fmac_prefix, ftags = util.values_from_flavor(flavor)
+        fmode, flink, fmac_prefix, fovs_vlan, ftags = \
+                util.values_from_flavor(flavor)
     except EmptyPool:
         log.error("Failed to allocate resources for network of type: %s",
                   flavor)
@@ -74,6 +77,7 @@ def create(userid, name, flavor, link=None, mac_prefix=None, mode=None,
     mode = mode or fmode
     link = link or flink
     mac_prefix = mac_prefix or fmac_prefix
+    ovs_vlan = ovs_vlan or fovs_vlan
     tags = tags or ftags
 
     validate_mac(mac_prefix + "0:00:00:00")
@@ -95,6 +99,7 @@ def create(userid, name, flavor, link=None, mac_prefix=None, mode=None,
         mode=mode,
         link=link,
         mac_prefix=mac_prefix,
+        ovs_vlan=ovs_vlan,
         tags=tags,
         public=public,
         external_router=public,
@@ -153,6 +158,7 @@ def delete(network):
 
     # Delete network to all backends that exists
     for bnet in network.backend_networks.exclude(operstate="DELETED"):
+        #TODO update network-state
         backend_mod.delete_network(network, bnet.backend)
     else:
         # If network does not exist in any backend, update the network state

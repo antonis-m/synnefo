@@ -51,6 +51,7 @@ def pprint_network(network, display_mails=False, stdout=None, title=None):
         ("flavor", network.flavor),
         ("link", network.link),
         ("mode", network.mode),
+        ("OVS vlan", network.ovs_vlan),
         ("deleted", network.deleted),
         ("tags", "), ".join(network.backend_tag)),
         ("action", network.action),

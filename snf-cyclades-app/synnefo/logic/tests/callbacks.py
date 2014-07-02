@@ -21,7 +21,8 @@ from random import randint
 from django.test import TestCase
 
 from synnefo.db.models import (VirtualMachine, IPAddress, BackendNetwork,
-                               Network, BridgePoolTable, MacPrefixPoolTable)
+                               Network, BridgePoolTable, MacPrefixPoolTable,
+                               OvsVlanPoolTable)
 from synnefo.db import models_factory as mfactory
 from synnefo.lib.utils import split_time
 from datetime import datetime
@@ -478,6 +479,7 @@ class UpdateNetworkTest(TestCase):
     def test_remove(self, client):
         mfactory.MacPrefixPoolTableFactory()
         mfactory.BridgePoolTableFactory()
+        mfactory.OvsVlanPoolTableFactory()
         bn = mfactory.BackendNetworkFactory(operstate='ACTIVE')
         for old_state in ['success', 'canceled', 'error']:
             for flavor in Network.FLAVORS.keys():
@@ -490,6 +492,8 @@ class UpdateNetworkTest(TestCase):
                     net.link = allocate_resource('bridge')
                 if flavor == 'MAC_FILTERED':
                     net.mac_prefix = allocate_resource('mac_prefix')
+                if flavor == 'OVS_VLAN':
+                    net.ovs_vlan = allocate_resource('ovs_vlan')
                 net.save()
                 msg = self.create_msg(operation='OP_NETWORK_REMOVE',
                                       network=net.backend_id,
@@ -508,6 +512,9 @@ class UpdateNetworkTest(TestCase):
                 if flavor == 'MAC_FILTERED':
                     pool = MacPrefixPoolTable.get_pool()
                     self.assertTrue(pool.is_available(net.mac_prefix))
+                if flavor == 'OVS_VLAN':
+                    pool=OvsVlanPoolTable.get_pool()
+                    self.assertTrue(pool.is_available(net.ovs_vlan))
 
     @patch("synnefo.logic.rapi_pool.GanetiRapiClient")
     def test_remove_error(self, rapi, client):

@@ -20,7 +20,7 @@ from snf_django.lib.api import faults
 from snf_django.utils.testing import mocked_quotaholder
 from synnefo.logic import networks
 from synnefo.db import models_factory as mfactory
-from synnefo.db.models import BridgePoolTable, MacPrefixPoolTable
+from synnefo.db.models import BridgePoolTable, MacPrefixPoolTable, OvsVlanPoolTable
 from synnefo import settings
 from copy import copy
 
@@ -76,6 +76,20 @@ class NetworkTest(TestCase):
         self.assertEqual(net.backend_tag, ["physical-vlan"])
         pool = BridgePoolTable.get_pool()
         self.assertFalse(pool.is_available(net.link))
+
+        # OVS_VLAN
+        kwargs["flavor"] = "OVS_VLAN"
+        # Test exception if no rules exists
+        self.assertRaises(faults.ServiceUnavailable, networks.create, **kwargs)
+        mfactory.OvsVlanPoolTableFactory(base=None)
+        with mocked_quotaholder():
+            net = networks.create(**kwargs)
+        self.assertEqual(net.mode, "openvswitch")
+        self.assertEqual(net.ovs_vlan, "1")
+        self.assertEqual(net.link, "ovs0")
+        self.assertEqual(net.backend_tag, ["ovs-vlan"])
+        pool = OvsVlanPoolTable.get_pool()
+        self.assertFalse(pool.is_available(net.ovs_vlan))
 
         # IP_LESS_ROUTED
         kwargs["flavor"] = "IP_LESS_ROUTED"

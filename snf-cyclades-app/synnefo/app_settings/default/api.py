@@ -51,6 +51,7 @@ MAX_CIDR_BLOCK = 22
 # Default settings used by network flavors
 DEFAULT_MAC_PREFIX = 'aa:00:0'
 DEFAULT_BRIDGE = 'br0'
+DEFAULT_OVS = 'ovs0'
 
 # Network flavors that users are allowed to create through API requests
 # Available flavors are IP_LESS_ROUTED, MAC_FILTERED, PHYSICAL_VLAN
@@ -63,6 +64,11 @@ API_ENABLED_NETWORK_FLAVORS = ['MAC_FILTERED']
 # filtering packets via ebtables.
 DEFAULT_MAC_FILTERED_BRIDGE = 'prv0'
 
+# Settings for OVS_VLAN network:
+# ------------------------------------------
+# All networks of this type are connected to the same openvswitch. Isolation
+#between networks is achieved by assigning a unique vlan tag to each network.
+DEFAULT_OVS = 'ovs0'
 
 # Firewalling. Firewall tags should contain '%d' to be filled with the NIC
 # ID.
