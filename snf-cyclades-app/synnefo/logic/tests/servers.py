@@ -36,7 +36,7 @@ fixed_image.return_value = {'location': 'pithos://foo',
                             "is_public": True,
                             "owner": "user2",
                             "status": "AVAILABLE",
-                            "size": 1024,
+                            "size": 1000,
                             "is_snapshot": False,
                             'disk_format': 'diskdump'}
 
@@ -104,7 +104,8 @@ class ServerCreationTest(TransactionTestCase):
         name, args, kwargs = mrapi().CreateInstance.mock_calls[-1]
         self.assertEqual(kwargs["disks"][0],
                          {"provider": "archipelago",
-                          "origin": "pithos:test_mapfile",
+                          "origin": "test_mapfile",
+                          "origin_size": 1000,
                           "name": vm.volumes.all()[0].backend_volume_uuid,
                           "foo": "mpaz",
                           "lala": "lolo",

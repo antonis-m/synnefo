@@ -340,10 +340,10 @@
             }
             
             var el = this.vm(vm);
-            if (vm.can_resize()) {
-              el.addClass("can-resize");
+            if (!vm.in_error_state()) {
+                el.addClass("can-resize");
             } else {
-              el.removeClass("can-resize");
+                el.removeClass("can-resize");
             }
 
             if (vm.get('suspended')) {

@@ -19,7 +19,7 @@ from datetime import datetime
 from optparse import make_option
 
 from django.core import management
-from django.db import transaction
+from astakos.im import transaction
 from snf_django.management.commands import SynnefoCommand, CommandError
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
@@ -289,6 +289,7 @@ class Command(SynnefoCommand):
                 self.confirm()
 
             user.delete()
+            user.base_project and user.base_project.delete()
 
         # Change users email address
         newemail = options.get('set-email', None)

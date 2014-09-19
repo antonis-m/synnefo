@@ -47,16 +47,16 @@
     </div>
     <div class="ico"><img data-rv-src="model.status|get_vm_icon" /></div>
     <div class="name">
-      <span class="" data-rv-text="model.name|truncate_title"></span>
       <div data-rv-class="model.state|status_cls">
-        <span data-rv-text="model.state|status_display"></span>
         <div class="indicators">
           <div class="indicator1"></div>
           <div class="indicator2"></div>
           <div class="indicator3"></div>
           <div class="indicator4"></div>
         </div>
+        <span data-rv-text="model.state|status_display"></span>
       </div>
+      <span class="" data-rv-text="model.name|truncate_title"></span>
     </div>
   </div>
 </div>
@@ -162,8 +162,9 @@
   <div class="clearfix volume-header">
     <img src="{{ SYNNEFO_IMAGES_URL }}/icons/indicators/medium/progress.gif"
     class="in-progress hidden" />
+    <div class="size-display index-display" data-rv-text="model._index|prefix Disk #"></div>
     <div class="type-display" data-rv-text="model.size|disk_size_display"></div>
-    <div class="volume title-display" data-rv-text="model.display_name"></div>
+    <div class="volume title-display" data-rv-text="model.display_name|truncate 34"></div>
     <div class="actions-content inline">
       <div class="action-container snapshot warn" 
          data-rv-class-isactive="model.can_snapshot"

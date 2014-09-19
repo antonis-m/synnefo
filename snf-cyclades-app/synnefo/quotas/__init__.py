@@ -14,7 +14,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from django.utils import simplejson as json
-from django.db import transaction
+from synnefo.db import transaction
 
 from snf_django.lib.api import faults
 from synnefo.db.models import (QuotaHolderSerial, VirtualMachine, Network,
@@ -149,34 +149,35 @@ def issue_commission(resource, action, name="", force=False, auto_accept=False,
         serial_info["resolved"] = True
 
     serial = QuotaHolderSerial.objects.create(**serial_info)
-
-    # Correlate the serial with the resource. Resolved serials are not
-    # attached to resources
-    if not auto_accept:
-        resource.serial = serial
-        resource.save()
-
     return serial
 
 
 def accept_resource_serial(resource, strict=True):
     serial = resource.serial
-    assert serial.pending or serial.accept, "%s can't be accepted" % serial
-    log.debug("Accepting serial %s of resource %s", serial, resource)
-    _resolve_commissions(accept=[serial.serial], strict=strict)
+    accept_serial(serial, strict=strict)
     resource.serial = None
     resource.save()
     return resource
+
+
+def accept_serial(serial, strict=True):
+    assert serial.pending or serial.accept, "%s can't be accepted" % serial
+    log.debug("Accepting serial %s", serial)
+    _resolve_commissions(accept=[serial.serial], strict=strict)
 
 
 def reject_resource_serial(resource, strict=True):
     serial = resource.serial
-    assert serial.pending or not serial.accept, "%s can't be rejected" % serial
-    log.debug("Rejecting serial %s of resource %s", serial, resource)
-    _resolve_commissions(reject=[serial.serial], strict=strict)
+    reject_serial(serial)
     resource.serial = None
     resource.save()
     return resource
+
+
+def reject_serial(serial, strict=True):
+    assert serial.pending or not serial.accept, "%s can't be rejected" % serial
+    log.debug("Rejecting serial %s", serial)
+    _resolve_commissions(reject=[serial.serial], strict=strict)
 
 
 def _resolve_commissions(accept=None, reject=None, strict=True):
@@ -308,7 +309,7 @@ def issue_and_accept_commission(resource, action="BUILD", action_fields=None):
 
     try:
         # Accept the commission to quotaholder
-        accept_resource_serial(resource)
+        accept_serial(serial)
     except:
         # Do not crash if we can not accept commission to Quotaholder. Quotas
         # have already been reserved and the resource already exists in DB.
@@ -358,6 +359,12 @@ def get_commission_info(resource, action, action_fields=None):
                 return None
         elif action == "DESTROY":
             volumes = resource.volumes.filter(deleted=False)
+            if resource.operstate not in ["BUILD", "ERROR"]:
+                # Count only the volumes that are in the 'IN_USE' status,
+                # because a pending commission exists for the other volumes.
+                # The pending commission will be rejected, but
+                # snf-dispatcher will finally fix the quotas.
+                volumes = volumes.filter(status="IN_USE")
             resources.update(offline_resources)
             resources.update(get_volume_resources(volumes))
             if resource.operstate in ["STARTED", "BUILD", "ERROR"]:
@@ -457,6 +464,13 @@ def handle_resource_commission(resource, action, commission_name,
     serial = issue_commission(resource, action, name=commission_name,
                               force=force, auto_accept=auto_accept,
                               action_fields=action_fields)
+
+    # Correlate the serial with the resource. Resolved serials are not
+    # attached to resources
+    if not auto_accept:
+        resource.serial = serial
+        resource.save()
+
     return serial
 
 

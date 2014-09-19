@@ -62,7 +62,7 @@ def get_volume_type(volume_type_id, for_update=False, include_deleted=False,
 def get_snapshot(user_id, snapshot_id, exception=faults.ItemNotFound):
     try:
         with backend.PlanktonBackend(user_id) as b:
-            return b.get_snapshot(user_id, snapshot_id)
+            return b.get_snapshot(snapshot_id)
     except faults.ItemNotFound:
         raise exception("Snapshot %s not found" % snapshot_id)
 
@@ -103,8 +103,3 @@ def volume_to_links(volume_id):
 def snapshot_to_links(snapshot_id):
     href = join_urls(SNAPSHOTS_URL, str(snapshot_id))
     return [{"rel": rel, "href": href} for rel in ("self", "bookmark")]
-
-
-def update_snapshot_status(snapshot_id, user_id, status):
-    with backend.PlanktonBackend(user_id) as b:
-        return b.update_status(snapshot_id, status=status)

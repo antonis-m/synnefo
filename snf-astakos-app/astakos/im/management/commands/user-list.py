@@ -49,7 +49,10 @@ class Command(ListCommand):
         'activation_sent': ('activation_sent',
                             'The date activation sent to the user'),
         'displayname': ('username', 'The display name of the user'),
-        'groups': (get_groups, 'The groups of the user')
+        'groups': (get_groups, 'The groups of the user'),
+        'last_login_details': ('last_login_info_display',
+                             'User last login dates for each login method'),
+        'last_login': ('last_login', 'User last login date')
     }
 
     fields = ['id', 'displayname', 'realname', 'uuid', 'active', 'admin']
@@ -82,11 +85,11 @@ class Command(ListCommand):
                     dest='pending_verification',
                     default=False,
                     help="Display unverified users"),
-        make_option("--displayname",
+        make_option("--display-mails",
                     dest="displayname",
                     action="store_true",
                     default=False,
-                    help="Display user displayname (enabled by default)")
+                    help="Display user email (enabled by default)")
     )
 
     def handle_args(self, *args, **options):

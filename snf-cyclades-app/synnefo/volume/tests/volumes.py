@@ -18,6 +18,7 @@ from snf_django.utils.testing import BaseAPITest, mocked_quotaholder
 from synnefo.db import models_factory as mf
 from synnefo.volume import volumes
 from snf_django.lib.api import faults
+from django.conf import settings
 from mock import patch
 from copy import deepcopy
 
@@ -45,6 +46,14 @@ class VolumesTest(BaseAPITest):
         # Invalid server
         vm = mf.VirtualMachineFactory(userid="other_user")
         kwargs["server_id"] = vm.id
+        self.assertRaises(faults.BadRequest,
+                          volumes.create,
+                          **kwargs)
+
+        # Invalid size
+        kwargs = deepcopy(self.kwargs)
+        max_size = settings.CYCLADES_VOLUME_MAX_SIZE
+        kwargs["size"] = max_size + 1
         self.assertRaises(faults.BadRequest,
                           volumes.create,
                           **kwargs)
@@ -174,7 +183,7 @@ class VolumesTest(BaseAPITest):
                           volumes.delete,
                           vol)
 
-        vm = mf.VirtualMachineFactory()
+        vm = mf.VirtualMachineFactory(userid=vol.userid)
         # Also we cannot delete root volume
         vol.index = 0
         vol.machine = vm

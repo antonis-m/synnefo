@@ -324,10 +324,10 @@
         },
 
         submit: function() {
-            var value = _(self.$('input').val()).trim();
+            var value = _(this.$('input').val()).trim();
             if (value == "") { return };
             this.renaming = false;
-            this.vm.rename(self.$('input').val());
+            this.vm.rename(this.$('input').val());
             this.update_layout();
         }
     });
@@ -688,9 +688,7 @@
         init_handlers: function() {
           this.resize_actions.bind('click', _.bind(function(e){
               if (this.vm.in_error_state()) { return }
-              if (this.vm.can_resize()) {
-                ui.main.vm_resize_view.show(this.vm);
-              }
+              ui.main.vm_resize_view.show(this.vm);
           }, this));
         },
 
@@ -872,17 +870,18 @@
             var project = vm.get('project')
             if (project) {
               el.find(".project-name").text(
-                  _.truncate(project.get('name'), 20));
+                 "[" +  _.truncate(project.get('name'), 20) + "]"
+              );
             }
             // truncate name
-            el.find("span.name").text(util.truncate(vm.get("name"), 40));
+            el.find("span.name").text(util.truncate(vm.get("name"), 37));
 
-            el.find('.fqdn').text(
+            el.find('.fqdn').val(
                 vm.get('fqdn') || synnefo.config.no_fqdn_message);
             el.find("div.status").text(STATE_TEXTS[vm.state()]);
             // set state class
-            el.find("div.state").removeClass().addClass(
-                views.IconView.STATE_CLASSES[vm.state()].join(" "));
+            var cls = views.IconView.STATE_CLASSES[vm.state()] || ['state'];
+            el.find("div.state").removeClass().addClass(cls.join(" "));
             // os icon
             el.find("div.logo").css({
                 'background-image': "url(" + 
@@ -960,6 +959,8 @@
         'START':            ['state', 'starting-state'],
         'CONNECT':          ['state', 'connecting-state'],
         'DISCONNECT':       ['state', 'disconnecting-state'],
+        'ATTACH_VOLUME':    ['state', 'connecting-state'],
+        'DETACH_VOLUME':    ['state', 'disconnecting-state'],
         'RESIZE':           ['state', 'rebooting-state']
     };
 

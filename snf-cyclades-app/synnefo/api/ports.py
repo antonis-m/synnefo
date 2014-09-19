@@ -18,7 +18,7 @@ import ipaddr
 from django.conf.urls import patterns
 from django.http import HttpResponse
 from django.utils import simplejson as json
-from django.db import transaction
+from synnefo.db import transaction
 from django.template.loader import render_to_string
 
 from snf_django.lib import api
@@ -230,6 +230,10 @@ def delete_port(request, port_id):
     if port.network.public and not port.ips.filter(floating_ip=True,
                                                    deleted=False).exists():
         raise faults.Forbidden("Cannot disconnect from public network.")
+
+    vm = port.machine
+    if vm is not None and vm.suspended:
+        raise faults.Forbidden("Administratively Suspended VM.")
 
     servers.delete_port(port)
     return HttpResponse(status=204)

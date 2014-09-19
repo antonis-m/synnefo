@@ -21,7 +21,8 @@ from django.shortcuts import get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.models import User
 from django.core.urlresolvers import reverse
-from django.db import transaction
+from astakos.im import transaction
+from django.db.models import Q
 from django.http import HttpResponse, HttpResponseRedirect, Http404
 from django.shortcuts import redirect
 from django.utils.translation import ugettext as _
@@ -37,7 +38,7 @@ import astakos.im.messages as astakos_messages
 
 from astakos.im import activation_backends, user_logic
 from astakos.im.models import AstakosUser, ApprovalTerms, EmailChange, \
-    AstakosUserAuthProvider, PendingThirdPartyUser, Component
+    AstakosUserAuthProvider, PendingThirdPartyUser, Component, Project
 from astakos.im.util import get_context, prepare_response, get_query, \
     restrict_next
 from astakos.im.forms import LoginForm, InvitationForm, FeedbackForm, \
@@ -817,12 +818,25 @@ def resource_usage(request):
 
     resources_meta = presentation.RESOURCES
 
+    # resolve uuids of projects the user consumes quota from
+    user = request.user
+    quota_filters = Q(usage_min__gt=0, limit__gt=0)
+    quota_uuids = map(lambda k: k[1],
+                      quotas.get_users_quotas_counters([user],
+                                                       flt=quota_filters)[0].keys(),)
+    # resolve uuids of projects the user is member to
     user_memberships = request.user.projectmembership_set.actually_accepted()
-    sources = [quotas.project_ref(m.project.uuid) for m in user_memberships]
-    user_quotas = quotas.get_user_quotas(request.user, sources=sources)
-    projects = [m.project for m in user_memberships]
+    membership_uuids = [m.project.uuid for m in user_memberships]
+
+    # merge uuids
+    uuids = set(quota_uuids + membership_uuids)
+    uuid_refs = map(quotas.project_ref, uuids)
+
+    user_quotas = quotas.get_user_quotas(request.user, sources=uuid_refs)
+    projects = Project.objects.filter(uuid__in=uuids)
     user_projects = projects_api.get_projects_details(projects)
     resource_catalog, resource_groups = _resources_catalog()
+
     if resource_catalog is False:
         # on fail resource_groups contains the result object
         result = resource_groups

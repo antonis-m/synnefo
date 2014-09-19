@@ -99,11 +99,14 @@
           }
           
           usage = q.get_readable("usage", false, usage);
-          
+          usage = "{0}/{1}".format(usage, limit);
+          if (q.infinite()) {
+              usage = "Unlimited";
+          }
           var content = '<span class="resource-key">{0}:</span>';
-          content += '<span class="resource-value">{1}/{2}</span>';
+          content += '<span class="resource-value">{1}</span>';
           data += content.format(q.get('resource').get('display_name'), 
-                                 usage, limit);
+                                 usage);
         }, this);
         if (found == 0) {
           data += "<p>No resources available</p>"
@@ -132,16 +135,11 @@
         view.unbind('click');
       },
       
-      update_disabled: function(view) {
+      disabled_filter: function(model) {
         if (this.filter_func) {
-          if (!this.filter_func(view.model) && !view._is_current) {
-            view.set_disabled();
-            view.disabled = true;
-          } else {
-            view.set_enabled();
-            view.disabled = false;
-          }
+            return !this.filter_func(model);
         }
+        return false;
       },
       
       post_add_model_view: function(view, model) {
@@ -226,6 +224,11 @@
               filter_func: _.bind(this.can_fit_func, this),
               quotas_keys: this.resources
             });
+
+            this.collection_view.bind("change:select", function(item) {
+                this.handle_project_change(item.model);
+            }, this);
+
             this.collection_view.show(true);
             this.collection_view.model_usage = this.model_usage;
             this.collection_view.resource_model = this.model;
@@ -235,6 +238,16 @@
               this.collection_view.set_selected(this.model.get('project'));
             }
             this.list.append($(this.collection_view.el));
+            this.handle_project_change();
+        },
+
+        handle_project_change: function(project) {
+            var project = project || this.collection_view.get_selected();
+            if (project.id == this.model.get('project').id) {
+                this.submit_button.addClass("disabled");
+            } else {
+                this.submit_button.removeClass("disabled");
+            }
         },
 
         init_handlers: function() {
@@ -242,6 +255,7 @@
         },
 
         submit: function() {
+          if (this.submit_button.hasClass("disabled")) { return }
           if (this.in_progress) { return }
           var project = this.collection_view.get_selected();
           if (project.id == this.model.get('project').id) {
@@ -282,6 +296,7 @@
       description: 'Select project assign machine to',
       resources: ['cyclades.vm', 'cyclades.ram', 
                   'cyclades.cpu', 'cyclades.disk'],
+
       model_usage: function(model) {
           var quotas = model.get_flavor().quotas();
           var total = false;

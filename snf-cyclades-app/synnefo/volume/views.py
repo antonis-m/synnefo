@@ -15,10 +15,11 @@
 
 from itertools import ifilter
 from logging import getLogger
-from django.db import transaction
+from synnefo.db import transaction
 from django.http import HttpResponse
 from django.utils import simplejson as json
 from django.utils.encoding import smart_unicode
+from django.conf import settings
 
 from dateutil.parser import parse as date_parse
 
@@ -123,9 +124,14 @@ def create_volume(request):
     # Id of the volume to clone from
     source_volume_id = utils.get_attribute(vol_dict, "source_volid",
                                            required=False)
+
     # Id of the snapshot to create the volume from
     source_snapshot_id = utils.get_attribute(vol_dict, "snapshot_id",
                                              required=False)
+    if source_snapshot_id and not settings.CYCLADES_SNAPSHOTS_ENABLED:
+        raise faults.NotImplemented("Making a clone from a snapshot is not"
+                                    " implemented")
+
     # Reference to an Image stored in Glance
     source_image_id = utils.get_attribute(vol_dict, "imageRef", required=False)
 
@@ -239,10 +245,22 @@ def update_volume_metadata(request, volume_id, reset=False):
     volume = util.get_volume(request.user_uniq, volume_id, for_update=True,
                              non_deleted=True)
     if reset:
+        if len(meta_dict) > settings.CYCLADES_VOLUME_MAX_METADATA:
+            raise faults.BadRequest("Volumes cannot have more than %s metadata "
+                                    "items" %
+                                    settings.CYCLADES_VOLUME_MAX_METADATA)
+
         volume.metadata.all().delete()
         for key, value in meta_dict.items():
             volume.metadata.create(key=key, value=value)
     else:
+        if len(meta_dict) + len(volume.metadata.all()) - \
+           len(volume.metadata.all().filter(key__in=meta_dict.keys())) > \
+           settings.CYCLADES_VOLUME_MAX_METADATA:
+            raise faults.BadRequest("Volumes cannot have more than %s metadata"
+                                    " items" %
+                                    settings.CYCLADES_VOLUME_MAX_METADATA)
+
         for key, value in meta_dict.items():
             try:
                 # Update existing metadata

@@ -15,12 +15,12 @@
 
 import logging
 
-from django.db import transaction
+from synnefo.db import transaction
 from django.conf import settings
 from snf_django.lib.api import faults
 from synnefo.db.models import Volume, VolumeMetadata
 from synnefo.volume import util
-from synnefo.logic import server_attachments, utils
+from synnefo.logic import server_attachments, utils, commands
 from synnefo import quotas
 
 log = logging.getLogger(__name__)
@@ -73,6 +73,12 @@ def create(user_id, size, server_id, name=None, description=None,
     if project is None:
         project = user_id
 
+    if metadata is not None and \
+       len(metadata) > settings.CYCLADES_VOLUME_MAX_METADATA:
+        raise faults.BadRequest("Volumes cannot have more than %s metadata "
+                                "items" %
+                                settings.CYCLADES_VOLUME_MAX_METADATA)
+
     volume = _create_volume(server, user_id, project, size,
                             source_type, source_uuid,
                             volume_type=volume_type, name=name,
@@ -98,13 +104,25 @@ def _create_volume(server, user_id, project, size, source_type, source_uuid,
     utils.check_name_length(name, Volume.NAME_LENGTH,
                             "Volume name is too long")
     utils.check_name_length(description, Volume.DESCRIPTION_LENGTH,
-                            "Volume name is too long")
+                            "Volume description is too long")
     validate_volume_termination(volume_type, delete_on_termination)
 
     if index is None:
         # Counting a server's volumes is safe, because we have an
         # X-lock on the server.
         index = server.volumes.filter(deleted=False).count()
+
+    if size is not None:
+        try:
+            size = int(size)
+        except (TypeError, ValueError):
+            raise faults.BadRequest("Volume 'size' needs to be a positive"
+                                    " integer value.")
+        if size < 1:
+            raise faults.BadRequest("Volume size must be a positive integer")
+        if size > settings.CYCLADES_VOLUME_MAX_SIZE:
+            raise faults.BadRequest("Maximum volume size is '%sGB'" %
+                                    settings.CYCLADES_VOLUME_MAX_SIZE)
 
     # Only ext_ disk template supports cloning from another source. Otherwise
     # is must be the root volume so that 'snf-image' fill the volume
@@ -117,6 +135,7 @@ def _create_volume(server, user_id, project, size, source_type, source_uuid,
         raise faults.BadRequest(msg)
 
     source_version = None
+    origin_size = None
     # TODO: Check Volume/Snapshot Status
     if source_type == "snapshot":
         source_snapshot = util.get_snapshot(user_id, source_uuid,
@@ -136,6 +155,7 @@ def _create_volume(server, user_id, project, size, source_type, source_uuid,
                                     % (size << 30, source_snapshot["size"]))
         source_version = source_snapshot["version"]
         origin = source_snapshot["mapfile"]
+        origin_size = source_snapshot["size"]
     elif source_type == "image":
         source_image = util.get_image(user_id, source_uuid,
                                       exception=faults.BadRequest)
@@ -152,6 +172,7 @@ def _create_volume(server, user_id, project, size, source_type, source_uuid,
         source = Volume.prefix_source(source_uuid, source_type="image")
         source_version = source_image["version"]
         origin = source_image["mapfile"]
+        origin_size = source_image["size"]
     elif source_type == "blank":
         if size is None:
             raise faults.BadRequest("Volume size is required")
@@ -189,6 +210,11 @@ def _create_volume(server, user_id, project, size, source_type, source_uuid,
                                    origin=origin,
                                    index=index,
                                    status="CREATING")
+
+    # Store the size of the origin in the volume object but not in the DB.
+    # We will have to change this in order to support detachable volumes.
+    volume.origin_size = origin_size
+
     return volume
 
 
@@ -197,10 +223,14 @@ def delete(volume):
     """Delete a Volume"""
     # A volume is deleted by detaching it from the server that is attached.
     # Deleting a detached volume is not implemented.
-    if volume.machine_id is not None:
-        server_attachments.detach_volume(volume.machine, volume)
+    server_id = volume.machine_id
+    if server_id is not None:
+        server = util.get_server(volume.userid, server_id, for_update=True,
+                                 non_deleted=True,
+                                 exception=faults.BadRequest)
+        server_attachments.detach_volume(server, volume)
         log.info("Detach volume '%s' from server '%s', job: %s",
-                 volume.id, volume.machine_id, volume.backendjobid)
+                 volume.id, server_id, volume.backendjobid)
     else:
         raise faults.BadRequest("Cannot delete a detached volume")
 
@@ -210,8 +240,12 @@ def delete(volume):
 @transaction.commit_on_success
 def update(volume, name=None, description=None, delete_on_termination=None):
     if name is not None:
+        utils.check_name_length(name, Volume.NAME_LENGTH,
+                                "Volume name is too long")
         volume.name = name
     if description is not None:
+        utils.check_name_length(description, Volume.DESCRIPTION_LENGTH,
+                                "Volume description is too long")
         volume.description = description
     if delete_on_termination is not None:
         validate_volume_termination(volume.volume_type, delete_on_termination)
@@ -225,10 +259,15 @@ def update(volume, name=None, description=None, delete_on_termination=None):
 def reassign_volume(volume, project):
     if volume.index == 0:
         raise faults.Conflict("Cannot reassign: %s is a system volume" %
-                              volume)
+                              volume.id)
+    if volume.machine_id is not None:
+        server = util.get_server(volume.userid, volume.machine_id,
+                                 for_update=True, non_deleted=True,
+                                 exception=faults.BadRequest)
+        commands.validate_server_action(server, "REASSIGN")
     action_fields = {"from_project": volume.project, "to_project": project}
     log.info("Reassigning volume %s from project %s to %s",
-             volume, volume.project, project)
+             volume.id, volume.project, project)
     volume.project = project
     volume.save()
     quotas.issue_and_accept_commission(volume, action="REASSIGN",

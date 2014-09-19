@@ -54,9 +54,10 @@ def invite(inviter, email, realname):
     inviter.save()
 
 
-def send_plain(user, subject=_(astakos_messages.PLAIN_EMAIL_SUBJECT),
+def send_plain(user, sender=settings.SERVER_EMAIL,
+               subject=_(astakos_messages.PLAIN_EMAIL_SUBJECT),
                template_name='im/plain_email.txt', text=None):
-    """Send mail to user with fully customizable subject and body.
+    """Send mail to user with fully customizable sender, subject and body.
 
     If the function is provided with a `template name`, then it will be used
     for rendering the mail. Any additional text should be provided in the
@@ -74,7 +75,7 @@ def send_plain(user, subject=_(astakos_messages.PLAIN_EMAIL_SUBJECT),
                                    'baseurl': settings.BASE_URL,
                                    'site_name': settings.SITENAME,
                                    'support': settings.CONTACT_EMAIL})
-    sender = settings.SERVER_EMAIL
+
     send_mail(subject, message, sender, [user.email],
               connection=get_connection())
     logger.info("Sent plain email to user: %s", user.log_display)
@@ -84,8 +85,9 @@ def send_verification(user, template_name='im/activation_email.txt'):
     """
     Send email to user to verify his/her email and activate his/her account.
     """
+    index_url = reverse('index', urlconf="synnefo.webproject.urls")
     url = join_urls(settings.BASE_HOST,
-                    user.get_activation_url(nxt=reverse('index')))
+                    user.get_activation_url(nxt=index_url))
     message = render_to_string(template_name, {
                                'user': user,
                                'url': url,
@@ -167,8 +169,9 @@ def send_invitation(invitation, template_name='im/invitation.txt'):
     Send invitation email.
     """
     subject = _(astakos_messages.INVITATION_EMAIL_SUBJECT)
-    url = '%s?code=%d' % (join_urls(settings.BASE_HOST,
-                                    reverse('index')), invitation.code)
+    index_url = reverse('index', urlconf="synnefo.webproject.urls")
+    url = '%s?code=%d' % (join_urls(settings.BASE_HOST, index_url,
+                                    invitation.code))
     message = render_to_string(template_name, {
                                'invitation': invitation,
                                'url': url,
@@ -192,10 +195,10 @@ def send_greeting(user, email_template_name='im/welcome_email.txt'):
     Raises SMTPException, socket.error
     """
     subject = _(astakos_messages.GREETING_EMAIL_SUBJECT)
+    index_url = reverse('index', urlconf="synnefo.webproject.urls")
     message = render_to_string(email_template_name, {
                                'user': user,
-                               'url': join_urls(settings.BASE_HOST,
-                                                reverse('index')),
+                               'url': join_urls(settings.BASE_HOST, index_url),
                                'baseurl': settings.BASE_URL,
                                'site_name': settings.SITENAME,
                                'support': settings.CONTACT_EMAIL})

@@ -633,7 +633,7 @@
           }
           if (key == 'disk') {
             parser = synnefo.util.readablizeBytes
-            getter = this.ram_to_bytes
+            getter = this.disk_to_bytes
           }
           if (key == 'cpu') {
             parser = function(v) { return v + 'x' }
@@ -1490,8 +1490,7 @@
         get_console_url: function(data) {
             var url_params = {
                 machine: this.get("name"),
-                host_ip: this.get_hostname(),
-                host_ip_v6: this.get_hostname(),
+                machine_hostname: this.get_hostname(),
                 host: data.host,
                 port: data.port,
                 password: data.password
@@ -1594,7 +1593,7 @@
                     break;
                 case 'console':
                     this.__make_api_call(this.url() + "/action", "create", 
-                                         {'console': {'type':'vnc'}}, 
+                                         {'console': {'type':'vnc-wss'}},
                                          function(data) {
                         var cons_data = data.console;
                         success.apply(this, [cons_data]);
@@ -1797,6 +1796,8 @@
         'START'         : ['destroy'],
         'CONNECT'       : ['destroy'],
         'DISCONNECT'    : ['destroy'],
+        'DETACH_VOLUME' : ['destroy'],
+        'ATTACH_VOLUME' : ['destroy'],
         'RESIZE'        : ['destroy'],
         'REASSIGN'      : ['destroy']
     }
@@ -1831,6 +1832,8 @@
         'CONNECT',
         'DISCONNECT',
         'FIREWALL',
+        'DETACH_VOLUME',
+        'ATTACH_VOLUME',
         'REASSIGN',
         'RESIZE'
     ]);
@@ -2049,9 +2052,11 @@
             var url = getUrl.call(this) + "/" + id;
             this.api_call(this.path + "/" + id, "read", {_options:{async:false, skip_api_error:true}}, undefined, 
             _.bind(function() {
-                this.add({id:id, cpu:"Unknown", ram:"Unknown", disk:"Unknown", name: "Unknown", status:"DELETED"})
+                this.add({id:id, cpu:"Unknown", ram:"Unknown", disk:"Unknown", disk_template: "Unknown", name: "Unknown", status:"DELETED"})
             }, this), _.bind(function(flv) {
                 if (!flv.flavor.status) { flv.flavor.status = "DELETED" };
+                flv.flavor.cpu = flv.flavor['vcpus'];
+                flv.flavor.disk_template = flv.flavor['SNF:disk_template'];
                 this.add(flv.flavor);
             }, this));
         },
@@ -2567,8 +2572,14 @@
             return this.get('resource').get('unit') == 'bytes';
         },
         
+        infinite: function(active) {
+            var suffix = '';
+            if (active) { suffix = '_active' }
+            return this.get("limit" + suffix) >= snf.util.PRACTICALLY_INFINITE; 
+        },
+
         get_available: function(active) {
-            suffix = '';
+            var suffix = '';
             if (active) { suffix = '_active'}
             var value = this.get('limit'+suffix) - this.get('usage'+suffix);
             if (active) {
@@ -2587,9 +2598,10 @@
                 value = this.get(key)
             }
             if (value <= 0) { value = 0 }
-            // greater than max js int (assume infinite quota)
-            if (value > Math.pow(2, 53) && over_value !== undefined) { 
-              return "Infinite"
+
+            value = parseInt(value);
+            if (this.infinite()) { 
+              return "Unlimited";
             }
 
             if (!this.is_bytes()) {
@@ -2620,6 +2632,9 @@
           },
           'ip': {
             'cyclades.floating_ip': 1
+          },
+          'volume': {
+            'cyclades.disk': 1
           }
         },
 
@@ -2880,7 +2895,7 @@
     snf.storage.joined_projects = new Backbone.FilteredCollection(undefined, {
         collection: synnefo.storage.projects,
         collectionFilter: function(m) {
-            return !m.get("missing");
+            return m.get && !m.get("missing");
         }
     });
 })(this);

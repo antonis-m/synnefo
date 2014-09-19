@@ -18,7 +18,7 @@ import logging
 from datetime import datetime
 from socket import getfqdn
 from django import dispatch
-from django.db import transaction
+from synnefo.db import transaction
 from django.utils import simplejson as json
 
 from snf_django.lib.api import faults
@@ -67,6 +67,10 @@ def create(userid, name, password, flavor, image_id, metadata={},
         raise faults.BadRequest("You need to specify either an image or a"
                                 " block device mapping.")
 
+    if len(metadata) > settings.CYCLADES_VM_MAX_METADATA:
+        raise faults.BadRequest("Virtual Machines cannot have more than %s "
+                                "metadata items" %
+                                settings.CYCLADES_VM_MAX_METADATA)
     # Get image info
     image = util.get_image_dict(image_id, userid)
 
@@ -82,25 +86,24 @@ def create(userid, name, password, flavor, image_id, metadata={},
     if volumes[0]["source_type"] == "blank":
         raise faults.BadRequest("Root volume cannot be blank")
 
-
     try:
         is_system = (image["owner"] == settings.SYSTEM_IMAGES_OWNER)
-        Image.objects.get_or_create(uuid=image["id"],
-                                    version=image["version"],
-                                    owner=image["owner"],
-                                    name=image["name"],
-                                    location=image["location"],
-                                    mapfile=image["mapfile"],
-                                    is_public=image["is_public"],
-                                    is_snapshot=image["is_snapshot"],
-                                    is_system=is_system,
-                                    os=image["metadata"].get("OS"),
-                                    osfamily=image["metadata"].get("OSFAMILY")
-                                    )
+        img, created = Image.objects.get_or_create(uuid=image["id"],
+                                                   version=image["version"])
+        if created:
+            img.owner = image["owner"],
+            img.name = image["name"],
+            img.location = image["location"],
+            img.mapfile = image["mapfile"],
+            img.is_public = image["is_public"],
+            img.is_snapshot = image["is_snapshot"],
+            img.is_system = is_system,
+            img.os = image["metadata"].get("OS", "unknown"),
+            img.osfamily = image["metadata"].get("OSFAMILY", "unknown")
+            img.save()
     except Exception as e:
         # Image info is not critical. Continue if it fails for any reason
         log.warning("Failed to store image info: %s", e)
-
 
     if use_backend is None:
         # Allocate server to a Ganeti backend
@@ -140,7 +143,7 @@ def create(userid, name, password, flavor, image_id, metadata={},
                            exception=faults.BadRequest)
             if v.volume_type_id != server_vtype.id:
                 msg = ("Volume '%s' has type '%s' while flavor's volume type"
-                       " is '%s'" % (v.volume_type_id, server_vtype.id))
+                       " is '%s'" % (v.id, v.volume_type_id, server_vtype.id))
                 raise faults.BadRequest(msg)
             if v.status != "AVAILABLE":
                 raise faults.BadRequest("Cannot use volume while it is in %s"
@@ -201,7 +204,7 @@ def create_server(vm, nics, volumes, flavor, image, personality, password):
 
     # If the root volume has a provider, then inform snf-image to not fill
     # the volume with data
-    image_id = image["backend_id"]
+    image_id = image["pithosmap"]
     root_volume = volumes[0]
     if root_volume.volume_type.provider in settings.GANETI_CLONE_PROVIDERS:
         image_id = "null"
@@ -298,6 +301,7 @@ def _resize(vm, flavor):
 
 @transaction.commit_on_success
 def reassign(vm, project):
+    commands.validate_server_action(vm, "REASSIGN")
     action_fields = {"to_project": project, "from_project": vm.project}
     log.info("Reassigning VM %s from project %s to %s",
              vm, vm.project, project)
@@ -394,7 +398,7 @@ def console(vm, console_type):
 
     vnc_extra_opts = settings.CYCLADES_VNCAUTHPROXY_OPTS
     fwd = request_vnc_forwarding(sport, daddr, dport, password,
-                                 **vnc_extra_opts)
+                                 console_type=console_type, **vnc_extra_opts)
 
     if fwd['status'] != "OK":
         log.error("vncauthproxy returned error status: '%s'" % fwd)
@@ -407,7 +411,7 @@ def console(vm, console_type):
         raise faults.ServiceUnavailable('VNC Server settings changed.')
 
     console = {
-        'type': 'vnc',
+        'type': console_type,
         'host': getfqdn(),
         'port': fwd['source_port'],
         'password': password}
@@ -722,7 +726,7 @@ def _port_for_request(user_id, network_dict):
         network = util.get_network(network_id, user_id, non_deleted=True)
         if network.public:
             if network.subnet4 is not None:
-                if not "fixed_ip" in network_dict:
+                if "fixed_ip" not in network_dict:
                     return create_public_ipv4_port(user_id, network)
                 elif address is None:
                     msg = "Cannot connect to public network"

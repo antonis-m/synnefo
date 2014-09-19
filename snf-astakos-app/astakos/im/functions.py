@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import re
 import logging
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
@@ -24,6 +25,7 @@ from django.db.utils import IntegrityError
 
 from snf_django.lib.api import faults
 
+import synnefo.util.date as date_util
 from astakos.im.models import AstakosUser, ProjectMembership, \
     ProjectApplication, Project, new_chain, Resource, ProjectLock, \
     create_project, ProjectResourceQuota, ProjectResourceGrant
@@ -613,6 +615,28 @@ def _modify_projects(projects, request):
     quotas.qh_sync_projects(projects)
 
 
+MAX_TEXT_INPUT = 4096
+MAX_BIGINT = 2**63 - 1
+
+
+DOMAIN_VALUE_REGEX = re.compile(
+    r'^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}$',
+    re.IGNORECASE)
+
+
+def valid_project_name(name):
+    return DOMAIN_VALUE_REGEX.match(name) is not None
+
+
+def get_date(date, key):
+    if isinstance(date, datetime):
+        return date
+    try:
+        return date_util.isoparse(date)
+    except ValueError:
+        raise ProjectBadRequest("Invalid %s" % key)
+
+
 def submit_application(owner=None,
                        name=None,
                        project_id=None,
@@ -636,6 +660,49 @@ def submit_application(owner=None,
             raise ProjectConflict("Cannot modify an uninitialized project.")
 
     policies = validate_resource_policies(resources)
+
+    if name is not None:
+        maxlen = ProjectApplication.MAX_NAME_LENGTH
+        if len(name) > maxlen:
+            raise ProjectBadRequest(
+                "'name' value exceeds max length %s" % maxlen)
+        if not valid_project_name(name):
+            raise ProjectBadRequest("Project name should be in domain format")
+
+    if member_join_policy is not None:
+        if member_join_policy not in POLICIES:
+            raise ProjectBadRequest("Invalid join policy")
+
+    if member_leave_policy is not None:
+        if member_leave_policy not in POLICIES:
+            raise ProjectBadRequest("Invalid join policy")
+
+    if homepage is not None:
+        maxlen = ProjectApplication.MAX_HOMEPAGE_LENGTH
+        if len(homepage) > maxlen:
+            raise ProjectBadRequest(
+                "'homepage' value exceeds max length %s" % maxlen)
+    if description is not None:
+        maxlen = MAX_TEXT_INPUT
+        if len(description) > maxlen:
+            raise ProjectBadRequest(
+                "'description' value exceeds max length %s" % maxlen)
+    if comments is not None:
+        maxlen = MAX_TEXT_INPUT
+        if len(comments) > maxlen:
+            raise ProjectBadRequest(
+                "'comments' value exceeds max length %s" % maxlen)
+    if limit_on_members_number is not None:
+        if not 0 <= limit_on_members_number <= MAX_BIGINT:
+            raise ProjectBadRequest("max_members out of range")
+
+    if start_date is not None:
+        start_date = get_date(start_date, "start_date")
+    if end_date is not None:
+        end_date = get_date(end_date, "end_date")
+        if end_date < datetime.now():
+            raise ProjectBadRequest(
+                "'end_date' must be in the future")
 
     force = request_user.is_project_admin()
     ok, limit = qh_add_pending_app(request_user, project, force)
@@ -691,7 +758,8 @@ def submit_application(owner=None,
 
     logger.info("User %s submitted %s." %
                 (request_user.log_display, application.log_display))
-    project_notif.application_notify(application, "submit")
+    action = "submit_new" if project_id is None else "submit_modification"
+    project_notif.application_notify(application, action)
     return application
 
 
@@ -721,6 +789,16 @@ def validate_resource_policies(policies, admin=False):
         if not isinstance(p_capacity, (int, long)) or \
                 not isinstance(m_capacity, (int, long)):
             raise ProjectBadRequest("Malformed resource policies")
+        if p_capacity > MAX_BIGINT or m_capacity > MAX_BIGINT:
+            raise ProjectBadRequest(
+                "Quota limit exceeds max value %s" % MAX_BIGINT)
+        if p_capacity < 0 or m_capacity < 0:
+            raise ProjectBadRequest(
+                "Negative quota limit is not allowed")
+        if p_capacity < m_capacity:
+            raise ProjectBadRequest(
+                "Project quota limit is less than member limit for "
+                "resource '%s'" % resource_name)
         pols.append((resource_d[resource_name], m_capacity, p_capacity))
     return pols
 
@@ -831,7 +909,7 @@ def check_conflicting_projects(project, new_project_name, silent=False):
              (new_project_name, conflicting_project.uuid))
         return fail(m)
     except Project.DoesNotExist:
-        pass
+        return True, None
 
 
 def approve_application(application_id, project_id=None, request_user=None,
@@ -955,68 +1033,67 @@ def validate_project_action(project, action, request_user=None, silent=True):
                           project.
         faults.BadRequest: When the action is unknown/malformed.
     """
-    def fail(e, msg):
+    def fail(e=Exception, msg=""):
         if silent:
             return False, msg
-
-        if e == "PROJECT CONFLICT":
-            raise ProjectConflict(m)
-        elif e == "BAD REQUEST":
-            raise faults.BadRequest("Unknown action: %s." % action)
         else:
-            raise Exception(e)
+            raise e(msg)
 
     if action == "TERMINATE":
         ok = project_check_allowed(project, request_user, level=ADMIN_LEVEL,
                                    silent=silent)
         if not ok:
-            return fail("PROJECT CONFLICT", None)
+            return fail(ProjectConflict)
 
         ok, m = checkAlive(project, silent=silent)
         if not ok:
-            return fail("PROJECT CONFLICT", m)
+            return fail(ProjectConflict, m)
 
         if project.is_base:
             m = _(astakos_messages.BASE_NO_TERMINATE) % project.uuid
-            return fail("PROJECT CONFLICT", m)
+            return fail(ProjectConflict, m)
 
     elif action == "SUSPEND":
         ok = project_check_allowed(project, request_user, level=ADMIN_LEVEL,
                                    silent=silent)
         if not ok:
-            return fail("PROJECT CONFLICT", None)
+            return fail(ProjectConflict)
 
         ok, m = checkAlive(project, silent=silent)
         if not ok:
-            return fail("PROJECT CONFLICT", m)
+            return fail(ProjectConflict, m)
+
+        if project.is_suspended:
+            m = _(astakos_messages.SUSPENDED_PROJECT) % project.uuid
+            return fail(ProjectConflict, m)
 
     elif action == "UNSUSPEND":
         ok = project_check_allowed(project, request_user, level=ADMIN_LEVEL,
                                    silent=silent)
         if not ok:
-            return fail("PROJECT CONFLICT", None)
+            return fail(ProjectConflict)
 
         if not project.is_suspended:
             m = _(astakos_messages.NOT_SUSPENDED_PROJECT) % project.uuid
-            return fail("PROJECT CONFLICT", m)
+            return fail(ProjectConflict, m)
 
     elif action == "REINSTATE":
         ok = project_check_allowed(project, request_user, level=ADMIN_LEVEL,
                                    silent=silent)
         if not ok:
-            return fail("PROJECT CONFLICT", None)
+            return fail(ProjectConflict)
 
         if not project.is_terminated:
             m = _(astakos_messages.NOT_TERMINATED_PROJECT) % project.uuid
-            return fail("PROJECT CONFLICT", m)
+            return fail(ProjectConflict, m)
 
         ok, m = check_conflicting_projects(project, project.realname,
                                            silent=silent)
         if not ok:
-            return fail("PROJECT CONFLICT", m)
+            return fail(ProjectConflict, m)
 
     else:
-        return fail("BAD REQUEST", m)
+        return fail(faults.BadRequest, "Unknown action: {}.".format(action))
 
     return True, None
 

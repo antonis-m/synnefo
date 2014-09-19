@@ -16,10 +16,11 @@
 from django.conf import settings
 from django.conf.urls import patterns
 
-from django.db import transaction
+from synnefo.db import transaction
 from django.http import HttpResponse
 from django.template.loader import render_to_string
 from django.utils import simplejson as json
+from django.core.urlresolvers import reverse
 
 from snf_django.lib import api
 from snf_django.lib.api import faults, utils
@@ -49,11 +50,15 @@ urlpatterns = patterns(
 )
 
 VOLUME_SOURCE_TYPES = [
-    "snapshot",
     "image",
     "volume",
     "blank"
 ]
+
+if settings.CYCLADES_SNAPSHOTS_ENABLED:
+    # If snapshots are enabled, add 'snapshot' to the list of allowed sources
+    # for a new block device.
+    VOLUME_SOURCE_TYPES.append("snapshot")
 
 
 def demux(request):
@@ -555,7 +560,9 @@ def delete_server(request, server_id):
 
 
 # additional server actions
-ARBITRARY_ACTIONS = ['console', 'firewallProfile', 'reassign']
+ARBITRARY_ACTIONS = ['console', 'firewallProfile', 'reassign',
+                     'os-getVNCConsole', 'os-getRDPConsole',
+                     'os-getSPICEConsole']
 
 
 def key_to_action(key):
@@ -583,7 +590,11 @@ def demux_server_action(request, server_id):
     vm = util.get_vm(server_id, request.user_uniq, for_update=True,
                      non_deleted=True, non_suspended=True)
 
-    action = req.keys()[0]
+    try:
+        action = req.keys()[0]
+    except IndexError:
+        raise faults.BadRequest("Malformed Request.")
+
     if not isinstance(action, basestring):
         raise faults.BadRequest("Malformed Request. Invalid action.")
 
@@ -679,7 +690,21 @@ def update_metadata(request, server_id):
     metadata = utils.get_attribute(req, "metadata", required=True,
                                    attr_type=dict)
 
+    if len(metadata) + len(vm.metadata.all()) - \
+       len(vm.metadata.all().filter(meta_key__in=metadata.keys())) > \
+       settings.CYCLADES_VM_MAX_METADATA:
+        raise faults.BadRequest("Virtual Machines cannot have more than %s "
+                                "metadata items" %
+                                settings.CYCLADES_VM_MAX_METADATA)
+
     for key, val in metadata.items():
+        if len(key) > VirtualMachineMetadata.KEY_LENGTH:
+            raise faults.BadRequest("Malformed Request. Metadata key is too"
+                                    " long")
+        if len(val) > VirtualMachineMetadata.VALUE_LENGTH:
+            raise faults.BadRequest("Malformed Request. Metadata value is too"
+                                    " long")
+
         if not isinstance(key, (basestring, int)) or\
            not isinstance(val, (basestring, int)):
             raise faults.BadRequest("Malformed Request. Invalid metadata.")
@@ -734,11 +759,27 @@ def create_metadata_item(request, server_id, key):
     except (KeyError, AssertionError):
         raise faults.BadRequest("Malformed request")
 
+    value = metadict[key]
+
+    # Check key, value length
+    if len(key) > VirtualMachineMetadata.KEY_LENGTH:
+        raise faults.BadRequest("Malformed Request. Metadata key is too long")
+    if len(value) > VirtualMachineMetadata.VALUE_LENGTH:
+        raise faults.BadRequest("Malformed Request. Metadata value is too"
+                                " long")
+
+    # Check number of metadata items
+    if vm.metadata.exclude(meta_key=key).count() == \
+       settings.CYCLADES_VM_MAX_METADATA:
+        raise faults.BadRequest("Virtual Machines cannot have more than %s"
+                                " metadata items" %
+                                settings.CYCLADES_VM_MAX_METADATA)
+
     meta, created = VirtualMachineMetadata.objects.get_or_create(
         meta_key=key,
         vm=vm)
 
-    meta.meta_value = metadict[key]
+    meta.meta_value = value
     meta.save()
     vm.save()
     d = {meta.meta_key: meta.meta_value}
@@ -906,6 +947,95 @@ def resize(request, vm, args):
     return HttpResponse(status=202)
 
 
+@server_action('os-getSPICEConsole')
+def os_get_spice_console(request, vm, args):
+    # Normal Response Code: 200
+    # Error Response Codes: computeFault (400, 500),
+    #                       serviceUnavailable (503),
+    #                       unauthorized (401),
+    #                       badRequest (400),
+    #                       badMediaType(415),
+    #                       itemNotFound (404),
+    #                       buildInProgress (409),
+    #                       overLimit (413)
+
+    log.info('Get Spice console for VM %s: %s', vm, args)
+
+    raise faults.NotImplemented('Spice console not implemented')
+
+
+@server_action('os-getRDPConsole')
+def os_get_rdp_console(request, vm, args):
+    # Normal Response Code: 200
+    # Error Response Codes: computeFault (400, 500),
+    #                       serviceUnavailable (503),
+    #                       unauthorized (401),
+    #                       badRequest (400),
+    #                       badMediaType(415),
+    #                       itemNotFound (404),
+    #                       buildInProgress (409),
+    #                       overLimit (413)
+
+    log.info('Get RDP console for VM %s: %s', vm, args)
+
+    raise faults.NotImplemented('RDP console not implemented')
+
+
+machines_console_url = None
+
+
+@server_action('os-getVNCConsole')
+def os_get_vnc_console(request, vm, args):
+    # Normal Response Code: 200
+    # Error Response Codes: computeFault (400, 500),
+    #                       serviceUnavailable (503),
+    #                       unauthorized (401),
+    #                       badRequest (400),
+    #                       badMediaType(415),
+    #                       itemNotFound (404),
+    #                       buildInProgress (409),
+    #                       overLimit (413)
+
+    log.info('Get osVNC console for VM %s: %s', vm, args)
+
+    console_type = args.get('type')
+    if console_type is None:
+        raise faults.BadRequest("No console 'type' specified.")
+
+    supported_types = {'novnc': 'vnc-wss', 'xvpvnc': 'vnc'}
+    if console_type not in supported_types:
+        raise faults.BadRequest('Supported types: %s' %
+                                ', '.join(supported_types.keys()))
+
+    console_info = servers.console(vm, supported_types[console_type])
+
+    global machines_console_url
+    if machines_console_url is None:
+        machines_console_url = reverse('synnefo.ui.views.machines_console')
+
+    if console_type == 'novnc':
+        # Return the URL of the WebSocket noVNC client
+        url = settings.CYCLADES_BASE_URL + machines_console_url
+        url += '?host=%(host)s&port=%(port)s&password=%(password)s'
+    else:
+        # Return a URL to paste into a Java VNC client
+        # FIXME: VNC clients (and the TigerVNC Java applet) can't handle the
+        # password.
+        url = '%(host)s:%(port)s?password=%(password)s'
+
+    resp = {'type': console_type,
+            'url': url % console_info}
+
+    if request.serialization == 'xml':
+        mimetype = 'application/xml'
+        data = render_to_string('os-console.xml', {'console': resp})
+    else:
+        mimetype = 'application/json'
+        data = json.dumps({'console': resp})
+
+    return HttpResponse(data, mimetype=mimetype, status=200)
+
+
 @server_action('console')
 def get_console(request, vm, args):
     # Normal Response Code: 200
@@ -923,8 +1053,12 @@ def get_console(request, vm, args):
     console_type = args.get("type")
     if console_type is None:
         raise faults.BadRequest("No console 'type' specified.")
-    elif console_type != "vnc":
-        raise faults.BadRequest("Console 'type' can only be 'vnc'.")
+
+    supported_types = ['vnc', 'vnc-ws', 'vnc-wss']
+    if console_type not in supported_types:
+        raise faults.BadRequest('Supported types: %s' %
+                                ', '.join(supported_types))
+
     console_info = servers.console(vm, console_type)
 
     if request.serialization == 'xml':
@@ -983,7 +1117,7 @@ def add(request, net, args):
         raise faults.BadRequest('Malformed Request.')
 
     vm = util.get_vm(server_id, request.user_uniq, non_suspended=True,
-                     non_deleted=True)
+                     for_update=True, non_deleted=True)
     servers.connect(vm, network=net)
     return HttpResponse(status=202)
 
@@ -1011,7 +1145,7 @@ def remove(request, net, args):
     nic = util.get_nic(nic_id=nic_id)
     server_id = nic.machine_id
     vm = util.get_vm(server_id, request.user_uniq, non_suspended=True,
-                     non_deleted=True)
+                     for_update=True, non_deleted=True)
 
     servers.disconnect(vm, nic)
 
@@ -1071,7 +1205,7 @@ def get_volumes(request, server_id):
 def get_volume_info(request, server_id, volume_id):
     log.debug("get_volume_info server_id %s volume_id", server_id, volume_id)
     user_id = request.user_uniq
-    vm = util.get_vm(server_id, user_id)
+    vm = util.get_vm(server_id, user_id, for_update=False)
     volume = get_volume(user_id, volume_id, for_update=False, non_deleted=True,
                         exception=faults.BadRequest)
     servers._check_attachment(vm, volume)
@@ -1104,7 +1238,7 @@ def attach_volume(request, server_id):
 def detach_volume(request, server_id, volume_id):
     log.debug("detach_volume server_id %s volume_id", server_id, volume_id)
     user_id = request.user_uniq
-    vm = util.get_vm(server_id, user_id, non_deleted=True)
+    vm = util.get_vm(server_id, user_id, for_update=True, non_deleted=True)
     volume = get_volume(user_id, volume_id, for_update=True, non_deleted=True,
                         exception=faults.BadRequest)
     vm = server_attachments.detach_volume(vm, volume)
