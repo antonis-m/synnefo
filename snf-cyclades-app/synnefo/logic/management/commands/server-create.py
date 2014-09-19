@@ -53,6 +53,9 @@ class Command(SynnefoCommand):
                          " available flavors."),
         make_option("--password", dest="password",
                     help="Password for the new server"),
+        make_option("--router", dest="router", default="False",
+                    choices=["True", "False"],
+                    help="True if new server will function as a router"),
         make_option("--port", dest="connections", action="append",
                     help="--port network:<network_id>(,address=<ip_address>),"
                          " --port id:<port_id>"
@@ -86,6 +89,7 @@ class Command(SynnefoCommand):
         flavor_id = options['flavor_id']
         password = options['password']
         volumes = options['volumes']
+        router = options['router']
 
         if not name:
             raise CommandError("name is mandatory")
@@ -110,9 +114,8 @@ class Command(SynnefoCommand):
         connection_list = parse_connections(options["connections"])
         volumes_list = parse_volumes(volumes)
         server = servers.create(user_id, name, password, flavor, image_id,
-                                networks=connection_list,
-                                volumes=volumes_list,
-                                use_backend=backend)
+                                router, networks=connection_list,
+                                volumes=volumes_list, use_backend=backend)
         pprint.pprint_server(server, stdout=self.stdout)
 
         wait = parse_bool(options["wait"])

@@ -44,8 +44,8 @@ server_created = dispatch.Signal(providing_args=["created_vm_params"])
 
 @transaction.commit_on_success
 def create(userid, name, password, flavor, image_id, metadata={},
-           personality=[], networks=None, use_backend=None, project=None,
-           volumes=None):
+           personality=[], router=False, networks=None, use_backend=None,
+           project=None, volumes=None):
 
     utils.check_name_length(name, VirtualMachine.VIRTUAL_MACHINE_NAME_LENGTH,
                             "Server name is too long")
@@ -124,6 +124,7 @@ def create(userid, name, password, flavor, image_id, metadata={},
                                        imageid=image["id"],
                                        image_version=image["version"],
                                        flavor=flavor,
+                                       router=router,
                                        operstate="BUILD")
     log.info("Created entry in DB for VM '%s'", vm)
 
@@ -568,14 +569,18 @@ def delete_port(port):
 def create_instance_ports(user_id, networks=None):
     # First connect the instance to the networks defined by the admin
     forced_ports = create_ports_for_setting(user_id, category="admin")
+    if router is True:
+        # If the Virtual Machine is going to serve as a router, connect
+        # instance to the management network defined by the admin
+        router_ports = create_ports_for_setting(user_id, category="router")
     if networks is None:
-        # If the user did not asked for any networks, connect instance to
+        # If the user did not ask for any networks, connect instance to
         # default networks as defined by the admin
         ports = create_ports_for_setting(user_id, category="default")
     else:
         # Else just connect to the networks that the user defined
         ports = create_ports_for_request(user_id, networks)
-    total_ports = forced_ports + ports
+    total_ports = forced_ports + router_ports + ports
     if len(total_ports) > settings.GANETI_MAX_NICS_PER_INSTANCE:
         raise faults.BadRequest("Maximum ports per server limit reached")
     return total_ports
@@ -588,6 +593,9 @@ def create_ports_for_setting(user_id, category):
     elif category == "default":
         network_setting = settings.CYCLADES_DEFAULT_SERVER_NETWORKS
         exception = faults.Conflict
+    elif category == "router":
+        network_setting = settings.CYCLADES_FORCED_ROUTER_NETWORKS
+        exception = faults.ServiceUnavailable   #check this exception
     else:
         raise ValueError("Unknown category: %s" % category)
 
@@ -618,6 +626,9 @@ def create_ports_for_setting(user_id, category):
                           network_ids, error_msgs)
                 raise exception("Cannot connect server to forced server"
                                 " networks.")
+            elif category == "router":
+                log.error("Cannot connect server to router networks '%s': %s",
+                          network_ids, error_msgs)
             else:
                 log.debug("Cannot connect server to default networks '%s': %s",
                           network_ids, error_msgs)
@@ -633,6 +644,8 @@ def _port_from_setting(user_id, network_id, category):
         return create_public_ipv4_port(user_id, category=category)
     elif network_id == "SNF:ANY_PUBLIC_IPV6":
         return create_public_ipv6_port(user_id, category=category)
+    #elif network_id == "SNF:ROUTER_MANAGEMENT_IPV4":
+    #    return create_private_ipv4_port(user_id, category=category)
     elif network_id == "SNF:ANY_PUBLIC":
         try:
             return create_public_ipv4_port(user_id, category=category)
@@ -648,7 +661,7 @@ def _port_from_setting(user_id, network_id, category):
     else:  # Case of network ID
         if category in ["user", "default"]:
             return _port_for_request(user_id, {"uuid": network_id})
-        elif category == "admin":
+        elif category in ["admin", "router"]:
             network = util.get_network(network_id, user_id, non_deleted=True)
             return _create_port(user_id, network)
         else:
