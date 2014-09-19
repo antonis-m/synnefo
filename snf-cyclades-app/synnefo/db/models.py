@@ -340,6 +340,7 @@ class VirtualMachine(models.Model):
     deleted = models.BooleanField('Deleted', default=False, db_index=True)
     suspended = models.BooleanField('Administratively Suspended',
                                     default=False)
+    router = models.BooleanField('VM is router', default=False)
     serial = models.ForeignKey(QuotaHolderSerial,
                                related_name='virtual_machine', null=True,
                                on_delete=models.SET_NULL)
