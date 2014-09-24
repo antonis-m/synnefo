@@ -110,7 +110,7 @@ def create(userid, name, password, flavor, image_id, metadata={},
         use_backend = allocate_new_server(userid, flavor)
 
     # Create the ports for the server
-    ports = create_instance_ports(userid, networks)
+    ports = create_instance_ports(userid, networks, router)
 
     if project is None:
         project = userid
@@ -566,7 +566,7 @@ def delete_port(port):
     return port
 
 
-def create_instance_ports(user_id, networks=None):
+def create_instance_ports(user_id, networks=None, router=False):
     # First connect the instance to the networks defined by the admin
     forced_ports = create_ports_for_setting(user_id, category="admin")
     if router is True:
