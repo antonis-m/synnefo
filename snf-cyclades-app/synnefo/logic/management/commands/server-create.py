@@ -116,7 +116,6 @@ class Command(SynnefoCommand):
         server = servers.create(user_id, name, password, flavor, image_id,
                                 router, networks=connection_list,
                                 volumes=volumes_list, use_backend=backend)
-
         pprint.pprint_server(server, stdout=self.stdout)
 
         wait = parse_bool(options["wait"])

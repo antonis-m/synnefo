@@ -101,7 +101,6 @@ def create(userid, name, password, flavor, image_id, router, metadata={},
             img.os = image["metadata"].get("OS", "unknown")
             img.osfamily = image["metadata"].get("OSFAMILY", "unknown")
             img.save()
-
     except Exception as e:
         # Image info is not critical. Continue if it fails for any reason
         log.warning("Failed to store image info: %s", e)
@@ -127,7 +126,6 @@ def create(userid, name, password, flavor, image_id, router, metadata={},
                                        flavor=flavor,
                                        router=router,
                                        operstate="BUILD")
-
     log.info("Created entry in DB for VM '%s'", vm)
 
     # Associate the ports with the server
