@@ -288,6 +288,7 @@ def pprint_server(server, display_mails=False, stdout=None, title=None):
         ("flavor_name", server.flavor.name),
         ("imageid", server.imageid),
         ("image_name", image),
+        ("router", server.router),
         ("state", server.operstate),
         ("backend", server.backend),
         ("deleted", server.deleted),

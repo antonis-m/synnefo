@@ -149,6 +149,7 @@ def if_update_required(func):
                       db_time.strftime(format_))
             return
         # New message. Update the database!
+        print "message is here " + msg
         func(target, msg, event_time)
 
     return wrapper

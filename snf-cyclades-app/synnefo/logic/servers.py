@@ -43,8 +43,8 @@ server_created = dispatch.Signal(providing_args=["created_vm_params"])
 
 
 @transaction.commit_on_success
-def create(userid, name, password, flavor, image_id, metadata={},
-           personality=[], router=False, networks=None, use_backend=None,
+def create(userid, name, password, flavor, image_id, router, metadata={},
+           personality=[], networks=None, use_backend=None,
            project=None, volumes=None):
 
     utils.check_name_length(name, VirtualMachine.VIRTUAL_MACHINE_NAME_LENGTH,
@@ -101,6 +101,7 @@ def create(userid, name, password, flavor, image_id, metadata={},
             img.os = image["metadata"].get("OS", "unknown")
             img.osfamily = image["metadata"].get("OSFAMILY", "unknown")
             img.save()
+
     except Exception as e:
         # Image info is not critical. Continue if it fails for any reason
         log.warning("Failed to store image info: %s", e)
@@ -110,7 +111,7 @@ def create(userid, name, password, flavor, image_id, metadata={},
         use_backend = allocate_new_server(userid, flavor)
 
     # Create the ports for the server
-    ports = create_instance_ports(userid, networks, router)
+    ports = create_instance_ports(userid, router, networks)
 
     if project is None:
         project = userid
@@ -126,6 +127,7 @@ def create(userid, name, password, flavor, image_id, metadata={},
                                        flavor=flavor,
                                        router=router,
                                        operstate="BUILD")
+
     log.info("Created entry in DB for VM '%s'", vm)
 
     # Associate the ports with the server
@@ -566,13 +568,15 @@ def delete_port(port):
     return port
 
 
-def create_instance_ports(user_id, networks=None, router=False):
+def create_instance_ports(user_id, router, networks=None):
     # First connect the instance to the networks defined by the admin
     forced_ports = create_ports_for_setting(user_id, category="admin")
     if router is True:
         # If the Virtual Machine is going to serve as a router, connect
         # instance to the management network defined by the admin
         router_ports = create_ports_for_setting(user_id, category="router")
+    else:
+        router_ports = []
     if networks is None:
         # If the user did not ask for any networks, connect instance to
         # default networks as defined by the admin
