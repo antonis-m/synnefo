@@ -20,9 +20,9 @@ from snf_django.lib.api import faults
 from django.conf import settings
 from copy import deepcopy
 from django.utils.encoding import smart_unicode
-from socket import *
-from threading import *
-from json import *
+import socket
+import threading
+import json
 
 
 def id_from_instance_name(name):
@@ -233,19 +233,19 @@ def communicate_with_router(host, data):
         return False
 
     data["CHANEL"] = "cyclades"
-    sock = create_connection((host, port), 5)
+    sock = socket.create_connection((host, port), 5)
     sock.settimeout(10)
-    t = Thread(target=socket_reader, args=(sock,))
+    t = threading.Thread(target=socket_reader, args=(sock,))
     t.daemon = True
     t.start
-    data = dumps(data)
+    data = json.dumps(data)
     sock.send(data)
     sock.close()
     return True
 
 
 def socket_reader(socket):
-    decoder = JSONDecoder()
+    decoder = json.JSONDecoder()
     buf = ""
     while True:
         d = socket.recv(1024)
@@ -256,7 +256,7 @@ def socket_reader(socket):
         while (len(buf) > 0):
             r, off = decoder.raw_decode(buf)
             buf = buf[off:].lstrip()
-            print dumps(r)
-            socket.send(dumps("liruliru"))
+            print json.dumps(r)
+            socket.send(json.dumps("liruliru"))
     except ValueError:
         pass
