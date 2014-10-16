@@ -20,6 +20,9 @@ from snf_django.lib.api import faults
 from django.conf import settings
 from copy import deepcopy
 from django.utils.encoding import smart_unicode
+from socket import *
+from threading import *
+from json import *
 
 
 def id_from_instance_name(name):
@@ -217,3 +220,43 @@ def check_name_length(name, max_length, message):
     name = smart_unicode(name, encoding="utf-8")
     if len(name) > max_length:
         raise faults.BadRequest(message)
+
+
+def communicate_with_router(host, data):
+    """Initiates a tcp connection with router over IPv6
+       We set the default Timeout at 5 seconds and the
+       destination port."""
+
+    port = int('7790')
+
+    if not isinstance(data, dict):
+        return False
+
+    data["CHANEL"] = "cyclades"
+    sock = create_connection((host, port), 5)
+    sock.settimeout(10)
+    t = Thread(target=socket_reader, args=(sock,))
+    t.daemon = True
+    t.start
+    data = dumps(data)
+    sock.send(data)
+    sock.close()
+    return True
+
+
+def socket_reader(socket):
+    decoder = JSONDecoder()
+    buf = ""
+    while True:
+        d = socket.recv(1024)
+        buf += d
+        if d == "":
+            break
+    try:
+        while (len(buf) > 0):
+            r, off = decoder.raw_decode(buf)
+            buf = buf[off:].lstrip()
+            print dumps(r)
+            socket.send(dumps("liruliru"))
+    except ValueError:
+        pass

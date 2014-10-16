@@ -597,7 +597,7 @@ def create_ports_for_setting(user_id, category):
         exception = faults.Conflict
     elif category == "router":
         network_setting = settings.CYCLADES_FORCED_ROUTER_NETWORKS
-        exception = faults.ServiceUnavailable   #check this exception
+        exception = faults.ServiceUnavailable   # check this exception
     else:
         raise ValueError("Unknown category: %s" % category)
 

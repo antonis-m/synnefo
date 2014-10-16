@@ -121,6 +121,7 @@ def process_op_status(vm, etime, jobid, opcode, status, logmsg, nics=None,
     """
     # See #1492, #1031, #1111 why this line has been removed
     # if (opcode not in [x[0] for x in VirtualMachine.BACKEND_OPCODES] or
+    log.warning("WARNIGN CHECK THIS VM '%s'",vm)
     if status not in [x[0] for x in BACKEND_STATUSES]:
         raise VirtualMachine.InvalidBackendMsgError(opcode, status)
 
@@ -325,7 +326,6 @@ def update_vm_nics(vm, nics, etime=None):
         return []
     db_nics = dict([(nic.id, nic) for nic in vm.nics.select_related("network")
                                                     .prefetch_related("ips")])
-
     for nic_name in set(db_nics.keys()) | set(ganeti_nics.keys()):
         db_nic = db_nics.get(nic_name)
         ganeti_nic = ganeti_nics.get(nic_name)
@@ -364,7 +364,16 @@ def update_vm_nics(vm, nics, etime=None):
                                        old_address=db_ipv6_address,
                                        new_address=gnt_ipv6_address,
                                        version=6)
-
+    ##FIXME : if vm is router inform  of db_nic changes
+    if vm.router is True:
+        #collect info about db_nics
+        #find management ip (cyclades should be on that network too)
+        net_id = Network.objects.get(name="router_mng").id
+        man_ip = IPAddress.objects.get(userid = vm.userid, ipversion = 4, network_id = net_id).address
+        log.debug("man_ip is '%s'", man_ip)
+        data={"msg":"duhelooo"}
+        success = utils.communicate_with_router("127.0.0.1",data)
+        log.debug("succes is true hopefully %s", success)
     return []
 
 
@@ -451,7 +460,7 @@ def change_address_of_port(port, userid, old_address, new_address, version):
                                          network_id=port.network_id,
                                          address=new_address,
                                          active=True)
-    log.info("Created IP log entry '%s' for address '%s' to server '%s'",
+    log.info("Created IP gamimeno log entry '%s' for address '%s' to server '%s'",
              ip_log.id, new_address, port.machine_id)
 
     return ipaddress
