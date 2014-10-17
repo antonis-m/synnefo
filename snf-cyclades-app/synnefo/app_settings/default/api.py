@@ -60,7 +60,7 @@ CYCLADES_FORCED_SERVER_NETWORKS = [2]
 # networks specified in CYCLADES_FORCED_ROUTER_NETWORKS, regardless
 # of the state of the floating IP pool of the user, and without
 # allocating any floating IPs."
-CYCLADES_FORCED_ROUTER_NETWORKS = [3]
+CYCLADES_FORCED_ROUTER_NETWORKS = [4]
 
 # Maximum allowed network size for private networks.
 MAX_CIDR_BLOCK = 22

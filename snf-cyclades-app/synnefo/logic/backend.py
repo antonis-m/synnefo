@@ -368,7 +368,7 @@ def update_vm_nics(vm, nics, etime=None):
     ##FIXME : if vm is router inform  of db_nic changes -- paizei na 8elei na mpei katw apo to elif
     ## if router exists for this user
     if vm.router is True:
-        net_id = Network.objects.get(name="router_mng").id
+        net_id = Network.objects.get(name="router_mng", state="ACTIVE").id
         man_ip = IPAddress.objects.get(userid = vm.userid, ipversion = 4, network_id = net_id).address
         nic_dic = {}
         for nic in db_nics:
