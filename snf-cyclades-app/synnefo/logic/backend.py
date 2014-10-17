@@ -20,7 +20,8 @@ from datetime import datetime, timedelta
 from synnefo.db.models import (VirtualMachine, Network, Volume,
                                BackendNetwork, BACKEND_STATUSES,
                                pooled_rapi_client, VirtualMachineDiagnostic,
-                               Flavor, IPAddress, IPAddressLog)
+                               Flavor, IPAddress, IPAddressLog,
+                               NetworkInterface, Subnet)
 from synnefo.logic import utils, ips
 from synnefo import quotas
 from synnefo.api.util import release_resource
@@ -364,16 +365,31 @@ def update_vm_nics(vm, nics, etime=None):
                                        old_address=db_ipv6_address,
                                        new_address=gnt_ipv6_address,
                                        version=6)
-    ##FIXME : if vm is router inform  of db_nic changes
+    ##FIXME : if vm is router inform  of db_nic changes -- paizei na 8elei na mpei katw apo to elif
+    ## if router exists for this user
     if vm.router is True:
-        #collect info about db_nics
-        #find management ip (cyclades should be on that network too)
         net_id = Network.objects.get(name="router_mng").id
         man_ip = IPAddress.objects.get(userid = vm.userid, ipversion = 4, network_id = net_id).address
-        log.debug("man_ip is '%s'", man_ip)
-        data={"msg":"duhelooo"}
+        nic_dic = {}
+        for nic in db_nics:
+            nic_obj = NetworkInterface.objects.get(id = nic)
+            mac = nic_obj.mac
+            mac_prefix = Network.objects.get(id = nic_obj.network.id).mac_prefix
+            ip_address = IPAddress.objects.get(nic = nic_obj.id).address
+            ip_version = IPAddress.objects.get(nic = nic_obj.id).ipversion
+            subnet_id = IPAddress.objects.get(nic = nic_obj.id).subnet.id
+            log.debug("subnet id is '%s'", subnet_id)
+            subnet = Subnet.objects.get(id = subnet_id).cidr
+            if ip_address != man_ip and ip_version != 6:
+                nic_dic[nic_obj.id] = (mac, mac_prefix, ip_address, subnet)
+        nic_dic["router"] = "yes"
+        data={"msg":nic_dic}
         success = utils.communicate_with_router("127.0.0.1",data)
         log.debug("succes is true hopefully %s", success)
+    else:
+        # maybe the only difference if vm is router is the data we send
+        log.debug("no router - treat accordingly")
+
     return []
 
 
