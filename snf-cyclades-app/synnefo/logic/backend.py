@@ -122,7 +122,6 @@ def process_op_status(vm, etime, jobid, opcode, status, logmsg, nics=None,
     """
     # See #1492, #1031, #1111 why this line has been removed
     # if (opcode not in [x[0] for x in VirtualMachine.BACKEND_OPCODES] or
-    log.warning("WARNIGN CHECK THIS VM '%s'",vm)
     if status not in [x[0] for x in BACKEND_STATUSES]:
         raise VirtualMachine.InvalidBackendMsgError(opcode, status)
 
@@ -365,30 +364,71 @@ def update_vm_nics(vm, nics, etime=None):
                                        old_address=db_ipv6_address,
                                        new_address=gnt_ipv6_address,
                                        version=6)
-    ##FIXME : if vm is router inform  of db_nic changes -- paizei na 8elei na mpei katw apo to elif
-    ## if router exists for this user
+    #FIXME : communication with router
+    # Update db_nics
+    db_nics_upd = dict([(nic.id, nic) for nic in vm.nics.select_related("network")
+                                                    .prefetch_related("ips")])
+    diff = set(db_nics.keys()) - set(db_nics_upd.keys())
+    log.debug("Check dff '%s'", diff)
+
     if vm.router is True:
         net_id = Network.objects.get(name="router_mng", state="ACTIVE").id
-        man_ip = IPAddress.objects.get(userid = vm.userid, ipversion = 4, network_id = net_id).address
+        man_ip = IPAddress.objects.get(userid=vm.userid, ipversion=4,
+                                       network_id=net_id).address
         nic_dic = {}
-        for nic in db_nics:
-            nic_obj = NetworkInterface.objects.get(id = nic)
+        for nic in db_nics_upd:
+            nic_obj = NetworkInterface.objects.get(id=nic)
             mac = nic_obj.mac
-            mac_prefix = Network.objects.get(id = nic_obj.network.id).mac_prefix
-            ip_address = IPAddress.objects.get(nic = nic_obj.id).address
-            ip_version = IPAddress.objects.get(nic = nic_obj.id).ipversion
-            subnet_id = IPAddress.objects.get(nic = nic_obj.id).subnet.id
-            log.debug("subnet id is '%s'", subnet_id)
-            subnet = Subnet.objects.get(id = subnet_id).cidr
+            mac_prefix = Network.objects.get(id=nic_obj.network.id).mac_prefix
+            ip_address = IPAddress.objects.get(nic=nic_obj.id).address
+            ip_version = IPAddress.objects.get(nic=nic_obj.id).ipversion
+            subnet_id = IPAddress.objects.get(nic=nic_obj.id).subnet.id
+            subnet = Subnet.objects.get(id=subnet_id).cidr
+            net_id = nic_obj.network.id
             if ip_address != man_ip and ip_version != 6:
-                nic_dic[nic_obj.id] = (mac, mac_prefix, ip_address, subnet)
+                nic_dic[nic_obj.id] = (mac, mac_prefix, ip_address,
+                                       subnet, net_id)
+                # need to check whether there are active vms with nics in
+                # those subnets and send this info to router
         nic_dic["router"] = "yes"
-        data={"msg":nic_dic}
-        success = utils.communicate_with_router("127.0.0.1",data)
-        log.debug("succes is true hopefully %s", success)
+        data = {"msg": nic_dic}
+        success = utils.communicate_with_router("127.0.0.1", data)
     else:
-        # maybe the only difference if vm is router is the data we send
-        log.debug("no router - treat accordingly")
+        try:
+            vm_router = VirtualMachine.objects.get(userid=vm.userid,
+                                                   router=True,
+                                                   operstate="STARTED")
+            exists = vm_router.router
+        except:
+            exists = False
+
+        if exists is True:
+            net_id = Network.objects.get(name="router_mng",
+                                         state="ACTIVE").id
+            man_ip = IPAddress.objects.get(userid=vm_router.userid,
+                                           ipversion=4,
+                                           network_id=net_id).address
+            nic_dic = {}
+            router_networks = Network.objects.filter(public=False,
+                                                     state="ACTIVE",
+                                                     userid=vm_router.userid)
+
+            for nic in db_nics_upd:
+                nic_obj = NetworkInterface.objects.get(id=nic)
+                nic_net = nic_obj.network
+                if nic_net in router_networks:
+                    mac = nic_obj.mac
+                    mac_prefix = Network.objects.get(id=nic_obj.network.id).mac_prefix
+                    ip_address = IPAddress.objects.get(nic=nic_obj.id).address
+                    ip_version = IPAddress.objects.get(nic=nic_obj.id).ipversion
+                    subnet_id = IPAddress.objects.get(nic=nic_obj.id).subnet.id
+                    subnet = Subnet.objects.get(id=subnet_id).cidr
+                    net_id = nic_obj.network.id
+                    nic_dic[nic_obj.id] = (mac, mac_prefix, ip_address,
+                                           subnet, net_id)
+            nic_dic["router"] = "no"
+            data = {"msg": nic_dic}
+            success = utils.communicate_with_router("127.0.0.1", data)
 
     return []
 
@@ -476,7 +516,7 @@ def change_address_of_port(port, userid, old_address, new_address, version):
                                          network_id=port.network_id,
                                          address=new_address,
                                          active=True)
-    log.info("Created IP gamimeno log entry '%s' for address '%s' to server '%s'",
+    log.info("Created IP log entry '%s' for address '%s' to server '%s'",
              ip_log.id, new_address, port.machine_id)
 
     return ipaddress
