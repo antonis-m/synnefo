@@ -365,17 +365,21 @@ def update_vm_nics(vm, nics, etime=None):
                                        new_address=gnt_ipv6_address,
                                        version=6)
     #FIXME : communication with router
-    # Update db_nics
     db_nics_upd = dict([(nic.id, nic) for nic in vm.nics.select_related("network")
                                                     .prefetch_related("ips")])
-    diff = set(db_nics.keys()) - set(db_nics_upd.keys())
-    log.debug("Check dff '%s'", diff)
+    #diff = set(db_nics.keys()) - set(db_nics_upd.keys())
+    #log.debug("Check dff '%s'", diff)
 
     if vm.router is True:
         net_id = Network.objects.get(name="router_mng", state="ACTIVE").id
         man_ip = IPAddress.objects.get(userid=vm.userid, ipversion=4,
                                        network_id=net_id).address
+        user_vms = VirtualMachine.objects.filter(userid=vm.userid,
+                                                 operstate="STARTED",
+                                                 router=False)
         nic_dic = {}
+        user_nic_dic = {}
+
         for nic in db_nics_upd:
             nic_obj = NetworkInterface.objects.get(id=nic)
             mac = nic_obj.mac
@@ -388,10 +392,29 @@ def update_vm_nics(vm, nics, etime=None):
             if ip_address != man_ip and ip_version != 6:
                 nic_dic[nic_obj.id] = (mac, mac_prefix, ip_address,
                                        subnet, net_id)
-                # need to check whether there are active vms with nics in
-                # those subnets and send this info to router
+            for uvm in user_vms:
+                user_nic_col = NetworkInterface.objects.filter(machine=uvm.id,
+                                                               network=net_id)
+                #SEND THIS INFO TO ROUTER SAME AS ABOVE
+                for user_nic_obj in user_nic_col:
+                        mac = user_nic_obj.mac
+                        mac_prefix = Network.objects.get(id=user_nic_obj.network.id).mac_prefix
+                        ip_address = IPAddress.objects.get(nic=user_nic_obj.id).address
+                        ip_version = IPAddress.objects.get(nic=user_nic_obj.id).ipversion
+                        subnet_id = IPAddress.objects.get(nic=user_nic_obj.id).subnet.id
+                        subnet = Subnet.objects.get(id=subnet_id).cidr
+                        net_id = user_nic_obj.network.id
+                        if ip_version != 6:
+                                user_nic_dic[user_nic_obj.id] = (mac,
+                                                                 mac_prefix,
+                                                                 ip_address,
+                                                                 subnet,
+                                                                 net_id)
+
         nic_dic["router"] = "yes"
-        data = {"msg": nic_dic}
+        data = {}
+        data["router_nics"] = nic_dic
+        data["user_nics"] = user_nic_dic
         success = utils.communicate_with_router("127.0.0.1", data)
     else:
         try:
@@ -411,7 +434,8 @@ def update_vm_nics(vm, nics, etime=None):
             nic_dic = {}
             router_networks = Network.objects.filter(public=False,
                                                      state="ACTIVE",
-                                                     userid=vm_router.userid)
+                                                     userid=vm_router.userid,
+                                                     machines=vm_router.id)
 
             for nic in db_nics_upd:
                 nic_obj = NetworkInterface.objects.get(id=nic)
