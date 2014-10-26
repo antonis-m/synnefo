@@ -382,15 +382,16 @@ def update_vm_nics(vm, nics, etime=None):
 
         for nic in db_nics_upd:
             nic_obj = NetworkInterface.objects.get(id=nic)
-            mac = nic_obj.mac
-            mac_prefix = Network.objects.get(id=nic_obj.network.id).mac_prefix
             ip_address = IPAddress.objects.get(nic=nic_obj.id).address
             ip_version = IPAddress.objects.get(nic=nic_obj.id).ipversion
+            mac = nic_obj.mac
+            mac_prefix = Network.objects.get(id=nic_obj.network.id).mac_prefix
             subnet_id = IPAddress.objects.get(nic=nic_obj.id).subnet.id
             subnet = Subnet.objects.get(id=subnet_id).cidr
+            gateway = Subnet.objects.get(id=subnet_id).gateway
             net_id = nic_obj.network.id
             if ip_address != man_ip and ip_version != 6:
-                nic_dic[nic_obj.id] = (mac, mac_prefix, ip_address,
+                nic_dic[nic_obj.id] = (mac, mac_prefix, ip_address, gateway,
                                        subnet, net_id)
             for uvm in user_vms:
                 user_nic_col = NetworkInterface.objects.filter(machine=uvm.id,
@@ -403,11 +404,13 @@ def update_vm_nics(vm, nics, etime=None):
                         ip_version = IPAddress.objects.get(nic=user_nic_obj.id).ipversion
                         subnet_id = IPAddress.objects.get(nic=user_nic_obj.id).subnet.id
                         subnet = Subnet.objects.get(id=subnet_id).cidr
+                        gateway = Subnet.objects.get(id=subnet_id).gateway
                         net_id = user_nic_obj.network.id
                         if ip_version != 6:
                                 user_nic_dic[user_nic_obj.id] = (mac,
                                                                  mac_prefix,
                                                                  ip_address,
+                                                                 gateway,
                                                                  subnet,
                                                                  net_id)
 
@@ -448,10 +451,11 @@ def update_vm_nics(vm, nics, etime=None):
                     subnet_id = IPAddress.objects.get(nic=nic_obj.id).subnet.id
                     subnet = Subnet.objects.get(id=subnet_id).cidr
                     net_id = nic_obj.network.id
-                    nic_dic[nic_obj.id] = (mac, mac_prefix, ip_address,
-                                           subnet, net_id)
+                    if ip_version != 6:
+                        nic_dic[nic_obj.id] = (mac, mac_prefix, ip_address,
+                                               subnet, net_id)
             nic_dic["router"] = "no"
-            data = {"msg": nic_dic}
+            data = {"host_nics": nic_dic}
             success = utils.communicate_with_router("127.0.0.1", data)
 
     return []
@@ -1239,7 +1243,7 @@ def connect_to_network(vm, nic):
     bnet, depend_jobs = ensure_network_is_active(backend, network.id)
 
     depends = create_job_dependencies(depend_jobs)
-
+    conflicts_check = False
     nic = {'name': nic.backend_uuid,
            'network': network.backend_id,
            'ip': nic.ipv4_address}
@@ -1250,6 +1254,7 @@ def connect_to_network(vm, nic):
         "instance": vm.backend_vm_id,
         "nics": [("add", "-1", nic)],
         "depends": depends,
+        "conflicts_check": conflicts_check
     }
     if vm.backend.use_hotplug():
         kwargs["hotplug_if_possible"] = True

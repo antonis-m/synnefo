@@ -481,8 +481,17 @@ def _create_port(userid, network, machine=None, use_ipaddress=None,
         # If network has IPv4 subnets, try to allocate the address that the
         # the user specified or a random one.
         if network.subnets.filter(ipversion=4).exists():
-            ipaddress = ips.allocate_ip(network, userid=userid,
-                                        address=address)
+            if network.subnets.filter(ipversion=4)[0].gateway == address:
+                if machine.router == True:
+                    ipaddress = ips.allocate_ip(network, userid=userid,
+                                                address=address,
+                                                gateway=True)
+                else:
+                    ipaddress = ips.allocate_ip(network, userid=userid,
+                                                address=address)
+            else:
+                ipaddress = ips.allocate_ip(network, userid=userid,
+                                            address=address)
         elif address is not None:
             raise faults.BadRequest("Address %s is not a valid IP for the"
                                     " defined network subnets" % address)

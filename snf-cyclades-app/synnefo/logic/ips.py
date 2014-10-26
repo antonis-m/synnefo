@@ -116,7 +116,18 @@ def allocate_ip_from_pools(pool_rows, userid, address=None, floating_ip=False):
                                  (address, pool_rows))
 
 
-def allocate_ip(network, userid, address=None, floating_ip=False):
+def allocate_gateway_ip(network, userid, address):
+    """Try to allocate the gateway IP for router interface"""
+    subnet=network.subnets.filter(ipversion=4)[0]
+    ipaddress = IPAddress.objects.create(subnet=subnet,
+                                         network=subnet.network,
+                                         userid=userid,
+                                         address=address,
+                                         floating_ip=False,
+                                         ipversion=4)
+    return ipaddress
+
+def allocate_ip(network, userid, address=None, floating_ip=False, gateway=False):
     """Try to allocate an IP from networks IP pools."""
     if network.action == "DESTROY":
         raise faults.Conflict("Cannot allocate IP. Network %s is being"
@@ -124,6 +135,8 @@ def allocate_ip(network, userid, address=None, floating_ip=False):
     elif network.drained:
         raise faults.Conflict("Can not allocate IP while network '%s' is in"
                               " 'SNF:DRAINED' status" % network.id)
+    if gateway == True:
+        return allocate_gateway_ip(network, userid, address=address)
 
     ip_pools = IPPoolTable.objects.select_for_update()\
         .filter(subnet__network=network).order_by('id')
