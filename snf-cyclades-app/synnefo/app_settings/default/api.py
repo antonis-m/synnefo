@@ -48,7 +48,7 @@ CYCLADES_DEFAULT_SERVER_NETWORKS = []
 # networks specified in CYCLADES_FORCED_SERVER_NETWORKS, regardless
 # of the state of the floating IP pool of the user, and without
 # allocating any floating IPs."
-CYCLADES_FORCED_SERVER_NETWORKS = [2]
+CYCLADES_FORCED_SERVER_NETWORKS = [1,2]
 
 # This setting contains a list of networks which every new server
 # will be forced to connect to, regardless of the contents of the POST
@@ -60,7 +60,7 @@ CYCLADES_FORCED_SERVER_NETWORKS = [2]
 # networks specified in CYCLADES_FORCED_ROUTER_NETWORKS, regardless
 # of the state of the floating IP pool of the user, and without
 # allocating any floating IPs."
-CYCLADES_FORCED_ROUTER_NETWORKS = [4]
+CYCLADES_FORCED_ROUTER_NETWORKS = [17]
 
 # Maximum allowed network size for private networks.
 MAX_CIDR_BLOCK = 22

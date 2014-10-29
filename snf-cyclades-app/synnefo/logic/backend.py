@@ -326,12 +326,18 @@ def update_vm_nics(vm, nics, etime=None):
         return []
     db_nics = dict([(nic.id, nic) for nic in vm.nics.select_related("network")
                                                     .prefetch_related("ips")])
+    rem_nics = {}
     for nic_name in set(db_nics.keys()) | set(ganeti_nics.keys()):
         db_nic = db_nics.get(nic_name)
         ganeti_nic = ganeti_nics.get(nic_name)
         if ganeti_nic is None:
             if nic_is_stale(vm, nic):
                 log.debug("Removing stale NIC '%s'" % db_nic)
+                nic_obj = NetworkInterface.objects.get(id=db_nic.id)
+                ip_address = IPAddress.objects.get(nic=nic_obj.id).address
+                net_id = nic_obj.network.id
+                mac = nic_obj.mac
+                rem_nics[db_nic.id] = (ip_address, net_id, mac)
                 remove_nic_ips(db_nic)
                 db_nic.delete()
             else:
@@ -367,8 +373,8 @@ def update_vm_nics(vm, nics, etime=None):
     #FIXME : communication with router
     db_nics_upd = dict([(nic.id, nic) for nic in vm.nics.select_related("network")
                                                     .prefetch_related("ips")])
-    #diff = set(db_nics.keys()) - set(db_nics_upd.keys())
-    #log.debug("Check dff '%s'", diff)
+#    diff = set(db_nics.keys()) - set(db_nics_upd.keys())
+#    log.debug("Check dff '%s'", diff)
 
     if vm.router is True:
         net_id = Network.objects.get(name="router_mng", state="ACTIVE").id
@@ -414,10 +420,11 @@ def update_vm_nics(vm, nics, etime=None):
                                                                  subnet,
                                                                  net_id)
 
-        nic_dic["router"] = "yes"
         data = {}
+        data["router"] = "yes"
         data["router_nics"] = nic_dic
         data["user_nics"] = user_nic_dic
+        data["rem_nics"] = rem_nics
         success = utils.communicate_with_router("127.0.0.1", data)
     else:
         try:
@@ -435,10 +442,14 @@ def update_vm_nics(vm, nics, etime=None):
                                            ipversion=4,
                                            network_id=net_id).address
             nic_dic = {}
+            fin_rem = {}
             router_networks = Network.objects.filter(public=False,
                                                      state="ACTIVE",
                                                      userid=vm_router.userid,
                                                      machines=vm_router.id)
+            for key in rem_nics:
+                if rem_nics[key][1] in router_networks:
+                    fin_rem[key] = rem_nics[key]
 
             for nic in db_nics_upd:
                 nic_obj = NetworkInterface.objects.get(id=nic)
@@ -454,8 +465,11 @@ def update_vm_nics(vm, nics, etime=None):
                     if ip_version != 6:
                         nic_dic[nic_obj.id] = (mac, mac_prefix, ip_address,
                                                subnet, net_id)
-            nic_dic["router"] = "no"
-            data = {"host_nics": nic_dic}
+
+            data = {}
+            data["router"] = "no"
+            data["host_nics"] = nic_dic
+            data["rem_nics"] = rem_nics
             success = utils.communicate_with_router("127.0.0.1", data)
 
     return []
